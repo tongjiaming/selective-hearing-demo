@@ -1,0 +1,29 @@
+# Local environments, secrets and caches
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Audio / biometric samples / third-party model assets stay local
+recordings/
+enrollment/
+checkpoints/
+weights/
+*.wav
+*.mp3
+*.flac
+*.pcm
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Scratch and runtime output
+work/
+logs/
+*.log
