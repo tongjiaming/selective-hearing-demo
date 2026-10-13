@@ -1,0 +1,5 @@
+numpy==1.26.4
+scipy==1.14.1
+soundfile==0.13.1
+sounddevice==0.5.3
+requests==2.32.3

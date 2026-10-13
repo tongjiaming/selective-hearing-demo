@@ -1,0 +1,71 @@
+# 首版实现与实测
+
+2026-10-13。本页记录代码和本机实验；原始设计中的 diart / WeSep 仍为后续候选。
+
+## 已实现
+
+原生 Tk 桌面窗口，启动时不收音、不播放。可枚举并在停止音频后刷新设备，明确选择输入/输出，再启动原声或 AI 模式。不会自动换成系统默认麦克风。
+
+AI 模式把 16 kHz 单声道音频每 4 秒交给模型。Conv-TasNet 在 8 kHz 分离两路波形，依据输入混合波形校准输出增益，再用 Silero VAD 取语音、ECAPA 计算声纹，匹配本次会话的人物。没有访问干净参考音轨、转写或 TTS。
+
+匿名身份最多两个。余弦匹配阈值 0.55，和另一身份的差值至少 0.08；只有与所有已知身份相似度低于 0.40 才创建新人。一个身份在同块只能匹配一路。至少两个块、累计 1.5 秒有效语音才能点击；模板暂固定，阈值未经过真实现场校准。
+
+「全部听」选原始混合声，「全部静音」选零值，「说话人」选模型分离后匹配的波形。切换在下一输出回调生效，时间轴继续前进。没有匹配结果就静音，不回退混合声。新人物不会解除已选择的静音。
+
+推理在线程中运行，不占音频回调；输入队列最多约 4 秒，输出最多约 8 秒，过载丢旧块并显示计数。捕获不连续时丢弃未完整拼接的块。原声模式输出队列上限 0.2 秒。这些是缓冲上限，不是延迟保证。
+
+离线模式支持导入、分块处理、同时间轴循环试听及导出。导出只有混合音轨、已确认人物音轨和指标 JSON，不含声纹。实时模式不会自动保存音频。
+
+## 本机验证结果
+
+环境：Windows，Intel Core Ultra 7 155H，32 GB 内存，CPU 4 个推理线程；Python 3.12、torch/torchaudio 2.5.1 CPU。完整包版本见 [requirements-tested.txt](../requirements-tested.txt)。
+
+- 16 项自动测试通过：身份交换、重复/未知身份、静音与同时间轴切换、队列上限、取消、离线导出、UI 状态、幅度校准等。不打开实际音频输入或输出。
+- 实际桌面窗口打开成功，模型加载成功；导入混合样本后自动生成两个可点击人物按钮。
+- 两份公开语音实验均真实加载已校验的预训练权重；没有随机模型或假后端。测试中的 FakeBackend 只验证控制逻辑，不在应用中使用。
+- 初始预训练输出有任意增益，直接播放会严重削波。现已通过对混合波形做双路最小二乘增益拟合修复；不把拟合残差添加到人物轨道。下表结果均来自修复后版本，两份样本所有输出的削波比例为 0。
+
+| 场景 | 输入时长 | 计算总耗时 | 实时因子 RTF | 确认身份 | 人 1 / 人 2 的 SI-SDR 改善 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 从开头混合两人语音 | 17.06 s | 6.72 s | 0.394 | 2 | +9.01 / +16.60 dB |
+| A 单独 4 秒，B 单独 4 秒，再混合余下语音 | 21.06 s | 7.39 s | 0.351 | 2 | +9.38 / +0.94 dB |
+
+计时包括分离、语音检测和身份匹配，排除首次加载模型约 4.8 秒、文件读写、设备和蓝牙。RTF 小于 1 仅说明这些离线样本的计算速度快于输入时长。实时模式还需先收集 4 秒声音；没有测量端到端延迟，不能称为低延迟听觉增强。
+
+**尚未稳定解决的问题：**第二份样本在人 2 单独发言时部分输出未被可靠匹配，在 8–12 秒的重叠区间人 2 整块缺失。这使该人的整段指标仅改善 0.94 dB。两份样本最后 1.06 秒也因短片段身份匹配失败而静音。保留了这些失败，没有用混合声补齐。当前版本适合验证流程，不能承诺持续稳定地只听选中人。
+
+## 数据与评分方法
+
+公开输入来自 [SpeechBrain 的 ASR 测试样本](https://github.com/speechbrain/speechbrain/tree/9ef9a3478a9fbc9cc31e365cc403180132fac3ac/tests/samples/ASR)，取两名说话人各六句不同语音，句间加 150 ms 静音，先按各人整段 RMS 调整后数字相加。arrival 场景移动最初各 4 秒以模拟先后出现，后面使用剩余语音，不用重复同一句凑确认次数。
+
+模型 API 只接收生成的单声道混合文件。干净音轨只在独立评估脚本内计算 SI-SDR。整份文件只允许一次全局身份对应，不逐块交换身份“优化”分数；未识别的零值也计入评分。SI-SDR 不代表现场可懂度或识别准确率。这是两份由同一组英语样本构造的小实验，不能外推为普遍性能。
+
+原始统计：[overlap 评分](evidence/overlap-evaluation.json)、[overlap 分块](evidence/overlap-report.json)、[arrival 评分](evidence/arrival-evaluation.json)、[arrival 分块](evidence/arrival-report.json)。包含输入文件 SHA-256；音频留在本机，不上传仓库。
+
+复现（完成模型安装后）：
+
+```powershell
+.venv\Scripts\python.exe scripts/download_samples.py
+.venv\Scripts\python.exe scripts/validate_models.py
+.venv\Scripts\python.exe scripts/validate_models.py --layout arrival --output results/arrival-validation
+```
+
+下载脚本读取固定 Git commit 下的公开 WAV。已安装 GitHub CLI 时使用其正常认证，其余情况使用公开 API；不打印或保存凭据。评分脚本不访问麦克风，也不播放声音。
+
+## 仍待验证与后续优先级
+
+1. AirPods 实际输入/输出、全双工、采样格式、旁人的可听度和无模型往返延迟；用户尚未连接，本次未启动任何麦克风。
+2. 更可靠的自动参考样本和身份匹配；当前失败案例可以直接用于回归。对比 diart + WeSep 或其他目标提取后端。
+3. 连续分块边界的听感、交叠融合、长时间运行、按钮切换到耳内声音的真实延迟。
+4. 中文、远场、环境噪声、第三人、身份误合并等测试。现场录音与主观试听均未完成。
+
+当前“有声音”提示表示最新分析块中有该人，不代表无延迟的当前发言指示。模型为双人分离，单人输入也可能被拆为两路；VAD 和身份匹配只部分缓解这个问题。
+
+## 官方实现依据
+
+- [Torchaudio Conv-TasNet 模型与预训练 bundle](https://github.com/pytorch/audio/blob/v2.5.1/src/torchaudio/pipelines/_source_separation_pipeline.py)：8 kHz、两路分离；本项目使用同一 factory 和对应权重。
+- [ECAPA 官方配置](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/blob/main/hyperparams.yaml)：80 维 Fbank、sentence normalization、192 维 embedding；未加载分类器，声纹不保存。
+- [Silero VAD](https://github.com/snakers4/silero-vad)：使用固定 Python 包内的 JIT 模型，推理无额外模型下载。
+- [sounddevice 实现](https://github.com/spatialaudio/python-sounddevice/blob/0.5.3/sounddevice.py)：设备刷新隔离调用 PortAudio 重初始化，仅在所有音频流停止后执行。
+
+安装脚本将环境放在 `%LOCALAPPDATA%\SelectiveHearing\` 的短路径，仓库 `.venv` 为目录联接，避免 Windows 长路径安装错误；不修改系统长路径设置。没有安装 diart、WeSep 或 Step SDK，也没有训练模型。

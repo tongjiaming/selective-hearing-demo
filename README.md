@@ -1,36 +1,78 @@
-# Selective Hearing Demo：选择听谁说话
+# Selective Hearing：选择听谁说话
 
-2026 Step 黑客松项目的方案仓库。目标是在多人交谈时，自动发现说话人并生成按钮，让佩戴耳机的用户选择听谁的原始声音。
+Windows 本地实验程序：发现声音后生成匿名人物按钮，选择「全部听 / 全部静音 / 只听说话人 1 / 只听说话人 2」。目标设备链路为 **AirPods 麦克风 → Windows 推理 → AirPods 播放**，不经过 iPhone。
 
-**当前状态：需求与模型调研阶段，尚未实现或实测。** 本仓库归档截至 2026-10-10 的讨论，不包含已完成的 App、模型推理服务或性能结果。
+目前已实现桌面界面、公开录音处理、真实双人波形分离、跨块身份匹配及设备收放音代码。**这是有明显缓冲延迟的原型；AirPods 实机收音与端到端延迟尚未验收。** 测试结论见 [实现与实测](docs/implementation.md)。
 
-## 当前方案
+## 启动
 
-**AirPods Pro 麦克风 → 蓝牙 → Windows PC → 目标人声提取 → 蓝牙 → AirPods Pro 播放。**
+需要 Windows、Python 3.12（含 Tcl/Tk）、约 2 GB 可用磁盘空间。当前使用 CPU，不要求 NVIDIA 显卡。
 
-- Windows 负责收音、说话人身份维护、模型推理、按钮界面和播放。
-- 自动发现新人，为每个人生成可复用的按钮。
-- 最小音频验收先覆盖两人：只听 A、只听 B、AB 都听、都不听。
-- 两人允许同时讲话；选择 A/B 必须明显改变主要听到的人声。
-- 允许一定漏音和延迟，但必须测量和如实说明。
+```powershell
+# 首次安装；模型首次下载需联网，之后推理在本机进行。
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -Models
 
-## 文档导航
+# 打开程序，不会自动打开麦克风或播放声音。
+powershell -ExecutionPolicy Bypass -File run.ps1
+```
+
+界面中点「加载人声模型」，然后：
+
+- **先试录音：**「导入并处理」选择 WAV / FLAC / OGG；确认人物后选择输出设备，点「循环试听」，切换人物。可导出分离音轨和 JSON 报告。
+- **连接耳机后：**「刷新设备」，明确选择 AirPods 输入和输出，点「开始收音」。首次确认人物至少需要两个 4 秒音频块。
+- **排查设备：**取消「自动识别人声并分离」，可先测试原声与静音。若提示 16 kHz 格式不支持，尝试同名 MME 设备。程序不会悄悄换成笔记本麦克风。
+
+「停止」关闭输入与播放。切换按钮在软件下一次输出回调生效，已经送入蓝牙/声卡的声音无法撤回。默认播放增益为 40%；使用耳机测试以避免扬声器反馈。
+
+短于两块的录音可能只出现灰色「确认中」按钮。最多保存两个匿名身份，重新开始收音或导入文件会重置。全部静音时仍分析新人；新人不会解除静音。
+
+## 下载与排错
+
+基础界面可单独安装 `scripts/setup.ps1`（不加 `-Models`），但人物分离必须安装模型依赖。约 20 MB 分离权重和 83 MB 声纹权重存放在 `models/`；下载和加载均验证 SHA-256。
+
+若官方网络不可达，可自行选择镜像重试：
+
+```powershell
+.venv\Scripts\python.exe scripts/download_models.py --hf-endpoint https://hf-mirror.com
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -Models -IndexUrl https://pypi.tuna.tsinghua.edu.cn/simple -HfEndpoint https://hf-mirror.com
+```
+
+PyTorch CPU 包仍取自官方源。参数只对本次安装生效，不修改全局配置。
+
+```powershell
+# 只枚举设备，不收音
+.venv\Scripts\python.exe -m selective_hearing --devices
+
+# 离线处理，不播放
+.venv\Scripts\python.exe -m selective_hearing --file mixed.wav --output results/my-test
+
+# 控制逻辑测试，不使用真实麦克风或扬声器
+.venv\Scripts\python.exe -m pip install pytest==8.3.5
+.venv\Scripts\python.exe -m pytest -q
+```
+
+## 模型与限制
+
+首版用 **Conv-TasNet Libri2Mix → Silero VAD → ECAPA-TDNN → 会话身份匹配**。先从同一混合波形分离两路，再判断各路是谁；不是根据转写时间戳静音，也不是用干净音轨冒充分离。
+
+diart、WeSep、Step 模型均未接入首版。选择现成 CPU 权重先验证完整流程，后续可替换 `ModelBackend`。结构、依据和实测边界见 [实现与实测](docs/implementation.md)。
+
+- 4 秒分块、非因果模型，包含收集音频的等待时间和计算时间；尚无跨块交叠融合，边界可能产生音质问题。
+- 分离模型在 8 kHz 工作，输出重采样为 16 kHz 不会恢复高频。
+- 身份匹配有可能漏识别或认错；未匹配目标输出静音，绝不自动回退混合声。
+- 暂只支持最多两人和单目标选择，不能承诺第三人、中文、嘈杂环境、远场或 AirPods 收音效果。
+- 软件静音只控制程序输出，不能消除耳机外部声音或物理漏音。
+
+## 文档与数据
 
 | 文档 | 内容 |
 | --- | --- |
-| [方案与边界](docs/design.md) | 功能、链路、自动登记与按人控制 |
-| [模型调研](docs/model-research.md) | Step 与非 Step 候选、证据、部署限制 |
-| [验证计划](docs/validation.md) | 设备、拾音、模型、延迟与切换验收 |
-| [讨论与决策记录](docs/discussion-log.md) | 方案演变、用户已确认项与待决定项 |
+| [实现与实测](docs/implementation.md) | 当前架构、已测结果和未测项目 |
+| [方案与边界](docs/design.md) | 原始需求与目标链路 |
+| [模型调研](docs/model-research.md) | 早期候选和公开依据 |
+| [验证计划](docs/validation.md) | 设备和现场验收计划 |
+| [讨论与决策记录](docs/discussion-log.md) | 方案演变和本次实现决定 |
 
-当前建议先验证 **diart + WeSep / REAL-TSE**，并将 **Nemotron-3-Diarization** 作为说话人识别的另一候选。此组合尚未安装、跑通或完成性能验证，不是最终技术选型。
+不自动保存或上传麦克风音频。显式导出仅写入用户选择的本地文件夹。模型、音频、运行环境、缓存、声纹和凭据不提交 GitHub。测试脚本只下载公开样本用于本地验证。
 
-## 项目背景
-
-[2026 Step 黑客松手册（飞书，访问受权限控制）](https://wvixbzgc0u7.feishu.cn/wiki/HAQfwzM09ii5QQkap5YcuiwMnoc)
-
-本仓库不转载手册正文。具体赛程、规则和是否要求使用 Step 模型，需要使用时重新核实。
-
-## 本次归档范围
-
-只保存方案文档与公开参考链接，不上传录音、声纹样本、模型权重、凭据或第三方仓库代码。后续开发和模型下载尚未开始。
+[2026 Step 黑客松手册](https://wvixbzgc0u7.feishu.cn/wiki/HAQfwzM09ii5QQkap5YcuiwMnoc)（访问受限；本仓库不转载正文）。

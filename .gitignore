@@ -14,6 +14,12 @@ recordings/
 enrollment/
 checkpoints/
 weights/
+models/
+results/
+.pytest_cache/
+*.egg-info/
+*.partial
+*.ckpt
 *.wav
 *.mp3
 *.flac

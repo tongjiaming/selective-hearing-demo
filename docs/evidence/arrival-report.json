@@ -1,0 +1,161 @@
+{
+  "sample_rate": 16000,
+  "duration_seconds": 21.06,
+  "window_seconds": 4,
+  "speakers": [
+    {
+      "id": "speaker_1",
+      "ready": true,
+      "observations": 4,
+      "seconds": 14.99
+    },
+    {
+      "id": "speaker_2",
+      "ready": true,
+      "observations": 2,
+      "seconds": 5.02
+    }
+  ],
+  "chunks": [
+    {
+      "seconds": 4.0,
+      "compute_seconds": 1.7932950002141297,
+      "rtf": 0.4483237500535324,
+      "active": [
+        "speaker_1"
+      ],
+      "unmatched": 0,
+      "speakers": [
+        {
+          "id": "speaker_1",
+          "ready": false,
+          "observations": 1,
+          "seconds": 3.97
+        }
+      ],
+      "offset_seconds": 0.0
+    },
+    {
+      "seconds": 4.0,
+      "compute_seconds": 0.9970521000213921,
+      "rtf": 0.24926302500534803,
+      "active": [
+        "speaker_2"
+      ],
+      "unmatched": 1,
+      "speakers": [
+        {
+          "id": "speaker_1",
+          "ready": false,
+          "observations": 1,
+          "seconds": 3.97
+        },
+        {
+          "id": "speaker_2",
+          "ready": false,
+          "observations": 1,
+          "seconds": 1.63
+        }
+      ],
+      "offset_seconds": 4.0
+    },
+    {
+      "seconds": 4.0,
+      "compute_seconds": 1.1971603999845684,
+      "rtf": 0.2992900999961421,
+      "active": [
+        "speaker_1"
+      ],
+      "unmatched": 1,
+      "speakers": [
+        {
+          "id": "speaker_1",
+          "ready": true,
+          "observations": 2,
+          "seconds": 7.74
+        },
+        {
+          "id": "speaker_2",
+          "ready": false,
+          "observations": 1,
+          "seconds": 1.63
+        }
+      ],
+      "offset_seconds": 8.0
+    },
+    {
+      "seconds": 4.0,
+      "compute_seconds": 1.8211234998889267,
+      "rtf": 0.4552808749722317,
+      "active": [
+        "speaker_1",
+        "speaker_2"
+      ],
+      "unmatched": 0,
+      "speakers": [
+        {
+          "id": "speaker_1",
+          "ready": true,
+          "observations": 3,
+          "seconds": 11.35
+        },
+        {
+          "id": "speaker_2",
+          "ready": true,
+          "observations": 2,
+          "seconds": 5.02
+        }
+      ],
+      "offset_seconds": 12.0
+    },
+    {
+      "seconds": 4.0,
+      "compute_seconds": 0.9967143000103533,
+      "rtf": 0.24917857500258833,
+      "active": [
+        "speaker_1"
+      ],
+      "unmatched": 0,
+      "speakers": [
+        {
+          "id": "speaker_1",
+          "ready": true,
+          "observations": 4,
+          "seconds": 14.99
+        },
+        {
+          "id": "speaker_2",
+          "ready": true,
+          "observations": 2,
+          "seconds": 5.02
+        }
+      ],
+      "offset_seconds": 16.0
+    },
+    {
+      "seconds": 1.06,
+      "compute_seconds": 0.5810603001154959,
+      "rtf": 0.548170094448581,
+      "active": [],
+      "unmatched": 1,
+      "speakers": [
+        {
+          "id": "speaker_1",
+          "ready": true,
+          "observations": 4,
+          "seconds": 14.99
+        },
+        {
+          "id": "speaker_2",
+          "ready": true,
+          "observations": 2,
+          "seconds": 5.02
+        }
+      ],
+      "offset_seconds": 20.0
+    }
+  ],
+  "compute_seconds": 7.386405600234866,
+  "backend": "Conv-TasNet Libri2Mix + ECAPA-TDNN + Silero VAD",
+  "note": "分块非因果处理。指标不包含蓝牙/设备延迟。未匹配的目标片段输出静音。"
+}
