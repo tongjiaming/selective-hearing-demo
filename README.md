@@ -41,6 +41,8 @@ powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -Models -IndexUrl htt
 
 PyTorch CPU 包仍取自官方源。参数只对本次安装生效，不修改全局配置。
 
+安装环境默认位于用户文档目录的 `Codex\sh-runtime-<项目哈希>`，项目 `.venv` 链接到该目录。新建环境时可传 `-RuntimeRoot D:\SelectiveHearing\venv` 指定其他短路径。请确保桌面用户和安装进程都能访问该路径；执行工具能读取目录，并不一定代表桌面启动器也能读取。
+
 ```powershell
 # 只枚举设备，不收音
 .venv\Scripts\python.exe -m selective_hearing --devices

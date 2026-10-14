@@ -1,7 +1,8 @@
 ﻿param(
     [switch]$Models,
     [string]$IndexUrl = 'https://pypi.org/simple',
-    [string]$HfEndpoint = 'https://huggingface.co'
+    [string]$HfEndpoint = 'https://huggingface.co',
+    [string]$RuntimeRoot
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -12,7 +13,11 @@ if (-not (Test-Path '.venv\Scripts\python.exe')) {
     $hashProvider = [Security.Cryptography.SHA256]::Create()
     try { $repoKey = ([BitConverter]::ToString($hashProvider.ComputeHash($repoBytes))).Replace('-', '').Substring(0, 8) }
     finally { $hashProvider.Dispose() }
-    $runtimeRoot = Join-Path $env:LOCALAPPDATA "SelectiveHearing\venv-$repoKey"
+    if (-not $RuntimeRoot) {
+        $documents = [Environment]::GetFolderPath('MyDocuments')
+        $RuntimeRoot = Join-Path $documents "Codex\sh-runtime-$repoKey"
+    }
+    $runtimeRoot = [IO.Path]::GetFullPath($RuntimeRoot)
     py -3.12 -m venv $runtimeRoot
     if ($LASTEXITCODE -ne 0) { throw '需要安装 Python 3.12' }
     New-Item -ItemType Junction -Path '.venv' -Target $runtimeRoot | Out-Null
@@ -31,3 +36,4 @@ if ($Models) {
     if ($LASTEXITCODE -ne 0) { throw '模型下载失败；可查阅 README 的手动下载方法' }
 }
 Write-Host '安装完成。运行 .\run.ps1 打开界面。'
+Write-Host "运行环境：$runtimeRoot"

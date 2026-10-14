@@ -68,4 +68,6 @@ AI 模式把 16 kHz 单声道音频每 4 秒交给模型。Conv-TasNet 在 8 kHz
 - [Silero VAD](https://github.com/snakers4/silero-vad)：使用固定 Python 包内的 JIT 模型，推理无额外模型下载。
 - [sounddevice 实现](https://github.com/spatialaudio/python-sounddevice/blob/0.5.3/sounddevice.py)：设备刷新隔离调用 PortAudio 重初始化，仅在所有音频流停止后执行。
 
-安装脚本将环境放在 `%LOCALAPPDATA%\SelectiveHearing\` 的短路径，仓库 `.venv` 为目录联接，避免 Windows 长路径安装错误；不修改系统长路径设置。没有安装 diart、WeSep 或 Step SDK，也没有训练模型。
+安装脚本默认将环境放在用户文档目录的 `Codex\sh-runtime-<项目哈希>`，也可用 `-RuntimeRoot` 指定短路径；仓库 `.venv` 为目录联接，避免 Windows 长路径安装错误。2026-10-14 排错时发现执行工具可见的 AppData 环境在桌面资源管理器中不可见，因此改用共享工作目录；底层隔离机制未确认。不修改系统长路径设置。没有安装 diart、WeSep 或 Step SDK，也没有训练模型。
+
+迁移后已从桌面资源管理器核对环境文件，并通过指向该环境 Pythonw 的 GUI 快捷方式实际启动程序：模型加载成功，导入公开混合录音后确认两人并生成两个可选按钮。`run.ps1 -Check` 和 16 项控制逻辑测试通过。本次没有启动麦克风或播放声音；上述结果仅验证启动与离线处理。
