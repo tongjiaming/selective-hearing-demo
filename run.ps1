@@ -1,6 +1,27 @@
-﻿$ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
-if (-not (Test-Path '.venv\Scripts\python.exe')) {
-    throw '请先运行 powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -Models'
+﻿param([switch]$Check)
+$ErrorActionPreference = 'Stop'
+$projectRoot = $PSScriptRoot
+$entryPoint = Join-Path $projectRoot 'selective_hearing\__main__.py'
+if (-not (Test-Path -LiteralPath $entryPoint)) {
+    throw "项目文件缺失：$entryPoint。请从完整项目目录启动。"
 }
-& .\.venv\Scripts\python.exe -m selective_hearing
+$runtimeRoot = Join-Path $projectRoot '.venv'
+if (Test-Path -LiteralPath $runtimeRoot) {
+    $environmentItem = Get-Item -LiteralPath $runtimeRoot
+    if ($environmentItem.LinkType -eq 'Junction') {
+        $runtimeRoot = [string]@($environmentItem.Target)[0]
+    }
+}
+$python = Join-Path $runtimeRoot 'Scripts\python.exe'
+$pythonw = Join-Path $runtimeRoot 'Scripts\pythonw.exe'
+if (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $pythonw)) {
+    throw "项目运行环境缺失：$runtimeRoot。此提示不代表电脑没有 Python；请在项目目录运行 scripts\setup.ps1 -Models。"
+}
+if ($Check) {
+    Write-Output "Project: $projectRoot"
+    Write-Output "Runtime: $runtimeRoot"
+    & $python --version
+    exit $LASTEXITCODE
+}
+# Resolve paths before starting, regardless of Explorer / shell working directory.
+Start-Process -FilePath $pythonw -ArgumentList '-m', 'selective_hearing' -WorkingDirectory $projectRoot
