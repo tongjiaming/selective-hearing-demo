@@ -13,6 +13,15 @@ from .core import AudioPacket, PlaybackBuffer, mono, resample
 from .models import Processor
 
 
+def stream_settings(device):
+    """Use the same format conversion for probing and opening Windows endpoints."""
+    info = sd.query_devices(device)
+    api = sd.query_hostapis(info['hostapi'])
+    if api['name'] == 'Windows WASAPI':
+        return sd.WasapiSettings(auto_convert=True)
+    return None
+
+
 def devices(refresh=False):
     if refresh:
         # PortAudio caches the device list. Only call this with all streams closed.
@@ -21,9 +30,32 @@ def devices(refresh=False):
             sd._terminate()
         sd._initialize()
     apis = sd.query_hostapis()
-    return [{"id": i, "name": f"{d['name']} [{apis[d['hostapi']]['name']}]",
-             "input": d["max_input_channels"], "output": d["max_output_channels"],
-             "rate": int(d["default_samplerate"])} for i, d in enumerate(sd.query_devices())]
+    # WASAPI exposes active endpoints once, without legacy mapper aliases or KS pins.
+    api_id = next((i for i, api in enumerate(apis) if api['name'] == 'Windows WASAPI'),
+                  sd.default.hostapi)
+    api = apis[api_id]
+    result = []
+    for i, device in enumerate(sd.query_devices()):
+        if device['hostapi'] != api_id:
+            continue
+        item = {'id': i, 'name': device['name'], 'api': api['name'],
+                'rate': int(device['default_samplerate'])}
+        for direction, check in [('input', sd.check_input_settings),
+                                 ('output', sd.check_output_settings)]:
+            item[direction] = 0
+            item[f'default_{direction}'] = i == api[f'default_{direction}_device']
+            if not device[f'max_{direction}_channels']:
+                continue
+            try:
+                # This queries capabilities; it never opens or starts a microphone.
+                check(device=i, channels=1, samplerate=16000, dtype='float32',
+                      extra_settings=stream_settings(i))
+            except (sd.PortAudioError, ValueError):
+                continue
+            item[direction] = device[f'max_{direction}_channels']
+        if item['input'] or item['output']:
+            result.append(item)
+    return result
 
 
 def load_audio(path):
@@ -79,7 +111,8 @@ class FilePlayer:
         self.offset = 0
         self.finished = False
         self.stream = sd.OutputStream(device=device, samplerate=16000, channels=1,
-                                      dtype="float32", blocksize=320, callback=self._callback)
+                                      dtype="float32", blocksize=320, callback=self._callback,
+                                      extra_settings=stream_settings(device))
 
     def _callback(self, outdata, frames, timing, status):
         mode, gain = self.control.get()
@@ -132,13 +165,19 @@ class LiveSession:
         self.sequence = 0
 
     def start(self):
-        sd.check_input_settings(device=self.input_device, channels=1, samplerate=16000, dtype="float32")
-        sd.check_output_settings(device=self.output_device, channels=1, samplerate=16000, dtype="float32")
+        input_settings = stream_settings(self.input_device)
+        output_settings = stream_settings(self.output_device)
+        sd.check_input_settings(device=self.input_device, channels=1, samplerate=16000,
+                                dtype="float32", extra_settings=input_settings)
+        sd.check_output_settings(device=self.output_device, channels=1, samplerate=16000,
+                                 dtype="float32", extra_settings=output_settings)
         try:
             self.output_stream = sd.OutputStream(device=self.output_device, samplerate=16000,
-                channels=1, dtype="float32", blocksize=320, callback=self._output)
+                channels=1, dtype="float32", blocksize=320, callback=self._output,
+                extra_settings=output_settings)
             self.input_stream = sd.InputStream(device=self.input_device, samplerate=16000,
-                channels=1, dtype="float32", blocksize=320, callback=self._input)
+                channels=1, dtype="float32", blocksize=320, callback=self._input,
+                extra_settings=input_settings)
             self.worker = Thread(target=self._work, daemon=True)
             self.worker.start()
             self.output_stream.start()

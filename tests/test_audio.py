@@ -4,9 +4,65 @@ from threading import Event
 import numpy as np
 import soundfile as sf
 import pytest
+from types import SimpleNamespace
 
 from selective_hearing.audio import process_file, export_result, FilePlayer, LiveSession
 from selective_hearing.core import AudioPacket, OutputControl
+from selective_hearing import audio
+
+
+def test_device_list_uses_active_endpoints_and_filters_each_direction(monkeypatch):
+    apis = [dict(name='MME', default_input_device=0, default_output_device=0),
+            dict(name='Windows WASAPI', default_input_device=1, default_output_device=2)]
+    raw = [dict(name=name, hostapi=api, max_input_channels=ins, max_output_channels=outs,
+                default_samplerate=48000) for name, api, ins, outs in [
+        ('Mapper', 0, 2, 2), ('Mic', 1, 1, 0), ('Headphones', 1, 0, 2),
+        ('Unsupported', 1, 1, 2), ('Duplex', 1, 1, 2), ('Mic', 1, 1, 0)]]
+    monkeypatch.setattr(audio.sd, 'query_hostapis', lambda index=None: apis if index is None else apis[index])
+    monkeypatch.setattr(audio.sd, 'query_devices', lambda index=None: raw if index is None else raw[index])
+    monkeypatch.setattr(audio.sd, 'default', SimpleNamespace(hostapi=0))
+    conversion = object()
+    monkeypatch.setattr(audio.sd, 'WasapiSettings', lambda **kw: conversion if kw == {'auto_convert': True} else None)
+    calls = []
+    def check(direction, **kwargs):
+        calls.append((direction, kwargs))
+        if kwargs['device'] == 3 or (kwargs['device'] == 4 and direction == 'input'):
+            raise audio.sd.PortAudioError('Unsupported format')
+    monkeypatch.setattr(audio.sd, 'check_input_settings', lambda **kw: check('input', **kw))
+    monkeypatch.setattr(audio.sd, 'check_output_settings', lambda **kw: check('output', **kw))
+    monkeypatch.setattr(audio.sd, 'InputStream', lambda **kw: pytest.fail('Enumeration opened microphone'))
+    monkeypatch.setattr(audio.sd, 'OutputStream', lambda **kw: pytest.fail('Enumeration opened playback'))
+    result = audio.devices()
+    assert [d['id'] for d in result] == [1, 2, 4, 5]  # identical names may be distinct endpoints
+    assert result[0]['default_input'] and result[1]['default_output']
+    assert result[2]['input'] == 0 and result[2]['output'] == 2
+    assert all(kw['extra_settings'] is conversion and kw['samplerate'] == 16000
+               and kw['channels'] == 1 and kw['dtype'] == 'float32' for _, kw in calls)
+
+
+def test_players_use_the_same_conversion_as_device_probe(monkeypatch):
+    conversion = object()
+    monkeypatch.setattr(audio, 'stream_settings', lambda device: conversion)
+    streams, checks = [], []
+    class Stream:
+        def __init__(self, **kwargs):
+            streams.append(kwargs)
+        def start(self): pass
+        def stop(self): pass
+        def close(self): pass
+    monkeypatch.setattr(audio.sd, 'InputStream', Stream)
+    monkeypatch.setattr(audio.sd, 'OutputStream', Stream)
+    monkeypatch.setattr(audio.sd, 'check_input_settings', lambda **kw: checks.append(kw))
+    monkeypatch.setattr(audio.sd, 'check_output_settings', lambda **kw: checks.append(kw))
+    player = FilePlayer(AudioPacket(np.zeros(320, np.float32)), 2, OutputControl())
+    session = LiveSession(1, 2, OutputControl(), lambda _: None)
+    try:
+        session.start()
+        assert len(streams) == 3 and len(checks) == 2
+        assert all(kw['extra_settings'] is conversion for kw in streams + checks)
+    finally:
+        session.stop()
+        player.stop()
 
 
 class FakeBackend:

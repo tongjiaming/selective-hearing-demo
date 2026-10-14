@@ -29,6 +29,7 @@ class App:
         self.file_busy = False
         self.speaker_buttons = {}
         self.source_devices = []
+        self.manual_devices = {}
         self.alive = True
         self.generation = 0
         self._build()
@@ -55,9 +56,11 @@ class App:
         ttk.Label(source, text="输入麦克风").grid(row=0, column=0, padx=(0, 12))
         self.input_box = ttk.Combobox(source, state="readonly", width=55)
         self.input_box.grid(row=0, column=1, sticky="ew", pady=4)
-        ttk.Label(source, text="播放耳机").grid(row=1, column=0, padx=(0, 12))
+        ttk.Label(source, text="播放设备").grid(row=1, column=0, padx=(0, 12))
         self.output_box = ttk.Combobox(source, state="readonly", width=55)
         self.output_box.grid(row=1, column=1, sticky="ew", pady=4)
+        self.input_box.bind('<<ComboboxSelected>>', lambda _: self.remember_device('input'))
+        self.output_box.bind('<<ComboboxSelected>>', lambda _: self.remember_device('output'))
         self.refresh_button = ttk.Button(source, text="刷新设备", command=self.refresh_devices)
         self.refresh_button.grid(row=0, column=2, rowspan=2, padx=(10, 0))
         self.device_note = ttk.Label(source, text="", foreground="#67758a")
@@ -125,26 +128,39 @@ class App:
             self.source_devices = devices(refresh=True)
             self.inputs = [d for d in self.source_devices if d["input"]]
             self.outputs = [d for d in self.source_devices if d["output"]]
-            for box, items in [(self.input_box, self.inputs), (self.output_box, self.outputs)]:
-                old = box.get()
-                names = [f"{d['id']} · {d['name']}" for d in items]
+            for direction, box, items in [('input', self.input_box, self.inputs),
+                                          ('output', self.output_box, self.outputs)]:
+                names = [d['name'] + ('（系统默认）' if d[f'default_{direction}'] else '')
+                         for d in items]
                 box["values"] = names
-                if old in names:
-                    box.set(old)
-                elif names:
-                    # Prefer AirPods, otherwise require explicit selection (no silent mic fallback).
-                    selected = next((i for i, d in enumerate(items) if "airpods" in d["name"].lower()), None)
-                    box.set("")
-                    if selected is not None:
-                        box.current(selected)
-            airpods = any("airpods" in d["name"].lower() for d in self.inputs)
-            self.device_note.config(text="发现 AirPods 输入，请核对设备后开始。" if airpods else "未发现 AirPods 输入。请连接后刷新，或明确选择对照测试设备。")
+                key = self.manual_devices.get(direction)
+                matches = [i for i, d in enumerate(items) if (d['api'], d['name']) == key]
+                selected = matches[0] if len(matches) == 1 else next(
+                    (i for i, d in enumerate(items) if d[f'default_{direction}']), None)
+                if len(matches) != 1:
+                    self.manual_devices.pop(direction, None)
+                box.set('')
+                if selected is not None:
+                    box.current(selected)
+            missing = [label for box, label in [(self.input_box, '输入'), (self.output_box, '输出')]
+                       if box.current() < 0]
+            note = ('、'.join(missing) + '设备未选中：请连接设备后刷新，或手动选择。'
+                    if missing else '已选好输入和输出。连接或切换耳机后，请刷新设备。')
+            self.device_note.config(text=note)
         except Exception as exc:
             self.inputs, self.outputs = [], []
             for box in (self.input_box, self.output_box):
                 box["values"] = []
                 box.set("")
             self.device_note.config(text=f"设备枚举失败：{exc}")
+
+    def remember_device(self, direction):
+        box, items = ((self.input_box, self.inputs) if direction == 'input'
+                      else (self.output_box, self.outputs))
+        index = box.current()
+        if 0 <= index < len(items):
+            device = items[index]
+            self.manual_devices[direction] = (device['api'], device['name'])
 
     def selected_device(self, box, items):
         index = box.current()
