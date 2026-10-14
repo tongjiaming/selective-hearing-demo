@@ -56,12 +56,20 @@ def test_ui_opens_without_audio_and_preserves_mute(monkeypatch):
         app.choose("mute")
         app.update_people([{"id": "speaker_1", "ready": False}], ["speaker_1"])
         assert app.control.get()[0] == "mute"
-        assert str(app.speaker_buttons["speaker_1"]["state"]) == "disabled"
+        assert str(app.speaker_buttons["speaker_1"]["state"]) == "normal"
+        assert '确认中' in app.speaker_labels['speaker_1']['text']
+        app.speaker_buttons['speaker_1'].invoke()
+        assert app.control.get()[0] == 'speaker_1'
+        app.speaker_mutes['speaker_1'].invoke()
+        assert app.control.get()[0] == 'exclude:speaker_1'
         app.update_people([{"id": "speaker_1", "ready": True}])
+        assert len(app.speaker_cards) == 1
+        assert '确认中' not in app.speaker_labels['speaker_1']['text']
         app.speaker_buttons["speaker_1"].invoke()
         assert app.control.get()[0] == "speaker_1"
         app.reset_people()
         assert not app.speaker_buttons
+        assert not app.speaker_cards and not app.speaker_mutes
         assert app.control.get()[0] == "all"
     finally:
         app.close()

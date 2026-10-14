@@ -69,7 +69,8 @@ def main():
         "model_load_seconds": load_seconds, "manifest": manifest,
         "duration_seconds": report["duration_seconds"], "compute_seconds": report["compute_seconds"],
         "rtf": report["compute_seconds"] / report["duration_seconds"],
-        "confirmed_speakers": len(identities), "speakers": report["speakers"],
+        "confirmed_speakers": sum(s['ready'] for s in report['speakers']),
+        "discovered_speakers": len(identities), "speakers": report["speakers"],
         "peak_by_identity": {k: float(np.max(np.abs(v))) for k, v in packet.tracks.items()},
         "clipping_fraction_by_identity": {k: float(np.mean(np.abs(v) > .95)) for k, v in packet.tracks.items()}}
     if len(identities) == 2:

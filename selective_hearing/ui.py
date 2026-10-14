@@ -7,7 +7,7 @@ from tkinter import ttk, filedialog, messagebox
 import time
 
 from .core import OutputControl
-from .audio import devices, LiveSession, FilePlayer, process_file, export_result
+from .audio import devices, LiveSession, FilePlayer, process_file, export_result, LIVE_WINDOW_SECONDS
 from .models import ModelBackend
 
 
@@ -28,6 +28,9 @@ class App:
         self.file_cancel = Event()
         self.file_busy = False
         self.speaker_buttons = {}
+        self.speaker_cards = {}
+        self.speaker_labels = {}
+        self.speaker_mutes = {}
         self.source_devices = []
         self.manual_devices = {}
         self.alive = True
@@ -80,7 +83,7 @@ class App:
         ttk.Button(row, text="停止", command=self.stop).pack(side="left")
         self.model_status = ttk.Label(controls, text="模型未加载。可先取消勾选，仅测试原声与静音。", foreground="#67758a")
         self.model_status.pack(anchor="w", pady=(8, 0))
-        ttk.Label(controls, text="AI 模式每 4 秒处理一块，存在明显延迟；不是低延迟通透模式。", foreground="#9b6500").pack(anchor="w", pady=(4, 0))
+        ttk.Label(controls, text=f"实时识别每 {LIVE_WINDOW_SECONDS:g} 秒处理一块；首次识别即可选择，仍有采样和计算延迟。", foreground="#9b6500").pack(anchor="w", pady=(4, 0))
 
         people = ttk.LabelFrame(main, text="3  选择收听目标", padding=12)
         people.pack(fill="x", pady=5)
@@ -88,7 +91,7 @@ class App:
         self.people_row.pack(fill="x")
         ttk.Button(self.people_row, text="全部听", command=lambda: self.choose("all")).pack(side="left", padx=(0, 8))
         ttk.Button(self.people_row, text="全部静音", command=lambda: self.choose("mute")).pack(side="left", padx=(0, 8))
-        self.people_note = ttk.Label(people, text="等待声音。新身份需在至少两块音频中确认，暂最多两人。", foreground="#67758a")
+        self.people_note = ttk.Label(people, text="开始收音后，首次识别到说话人即显示控制按钮；暂最多两人。", foreground="#67758a")
         self.people_note.pack(anchor="w", pady=8)
         self.mode_label = ttk.Label(people, text="当前：全部听", font=("Microsoft YaHei UI", 11, "bold"))
         self.mode_label.pack(anchor="w")
@@ -183,32 +186,50 @@ class App:
         Thread(target=work, daemon=True).start()
 
     def reset_people(self):
-        for button in self.speaker_buttons.values():
-            button.destroy()
+        for card in self.speaker_cards.values():
+            card.destroy()
         self.speaker_buttons.clear()
+        self.speaker_cards.clear()
+        self.speaker_labels.clear()
+        self.speaker_mutes.clear()
         # A new source is a new identity session; a prior target must not carry over.
         self.choose("all")
-        self.people_note.config(text="等待确认说话人；最多两人。")
+        self.people_note.config(text="等待人声。首次识别即可选择，身份确认会继续进行。")
 
     def choose(self, mode):
         self.control.set(mode=mode)
         label = {"all": "全部听", "mute": "全部静音"}.get(mode, "只听说话人 " + mode.split("_")[-1])
+        if mode.startswith('exclude:'):
+            label = '不听说话人 ' + mode.split('_')[-1]
         self.mode_label.config(text=f"当前：{label}")
 
     def update_people(self, speakers, active=()):
         for speaker in speakers:
             identity = speaker["id"]
             if identity not in self.speaker_buttons:
-                button = ttk.Button(self.people_row, command=lambda key=identity: self.choose(key))
-                button.pack(side="left", padx=(0, 8))
+                card = ttk.Frame(self.people_row)
+                card.pack(side='left', padx=(0, 12))
+                label = ttk.Label(card)
+                label.pack(anchor='w')
+                row = ttk.Frame(card)
+                row.pack()
+                button = ttk.Button(row, text='只听他', command=lambda key=identity: self.choose(key))
+                button.pack(side='left', padx=(0, 4))
+                mute = ttk.Button(row, text='不听他', command=lambda key=identity: self.choose('exclude:' + key))
+                mute.pack(side='left')
                 self.speaker_buttons[identity] = button
+                self.speaker_cards[identity] = card
+                self.speaker_labels[identity] = label
+                self.speaker_mutes[identity] = mute
             text = f"说话人 {identity.split('_')[-1]}"
             text += " · 有声音" if identity in active else ""
             if not speaker["ready"]:
                 text += " · 确认中"
-            self.speaker_buttons[identity].config(text=text, state="normal" if speaker["ready"] else "disabled")
+            self.speaker_labels[identity].config(text=text)
         if speakers:
-            self.people_note.config(text="匿名身份仅限本次会话。未匹配到所选身份时输出静音；可能漏识别或认错。")
+            self.people_note.config(text="“确认中”也可以选择，身份可能修正或误判；不听某人时仅播放其他已识别的人声。")
+        else:
+            self.people_note.config(text="尚未识别到足够清晰的人声。请查看下方输入电平，并确认麦克风选择。")
 
     def start_live(self):
         try:
@@ -232,7 +253,9 @@ class App:
             self.session = session
             self.start_button.config(state="disabled")
             self.ai_check.config(state="disabled")
-            self.status.config(text="正在收音 · AI 每 4 秒处理一块" if self.ai.get() else "正在收音 · 原声测试（未启用分人）")
+            self.status.config(text=f"正在收音 · AI 每 {LIVE_WINDOW_SECONDS:g} 秒处理一块" if self.ai.get() else "正在收音 · 原声测试（未启用分人）")
+            if not self.ai.get():
+                self.people_note.config(text='当前是原声模式，不识别人。启用“自动识别人声并分离”后才会生成人物按钮。')
         except Exception as exc:
             messagebox.showerror("无法开始", str(exc))
 
@@ -337,7 +360,8 @@ class App:
                     self.file_packet, self.file_report = event["packet"], event["report"]
                     self.play_button.config(state="normal")
                     self.export_button.config(state="normal")
-                    self.status.config(text=f"处理完成：确认 {len(self.file_packet.tracks)} 人。可循环试听；不足两块的短片段可能仍在确认中。")
+                    confirmed = sum(s['ready'] for s in self.file_report['speakers'])
+                    self.status.config(text=f"处理完成：发现 {len(self.file_packet.tracks)} 人，其中 {confirmed} 人已确认；均可选择试听。")
                 elif kind in ("error", "file_error"):
                     self.stop()
                     self.status.config(text=f"处理停止：{event['message']}")

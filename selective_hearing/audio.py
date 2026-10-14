@@ -12,6 +12,8 @@ import soundfile as sf
 from .core import AudioPacket, PlaybackBuffer, mono, resample
 from .models import Processor
 
+LIVE_WINDOW_SECONDS = 1.5
+
 
 def stream_settings(device):
     """Use the same format conversion for probing and opening Windows endpoints."""
@@ -85,9 +87,8 @@ def process_file(path, backend, notify=lambda _: None, cancel=None, window_secon
         info["offset_seconds"] = start / 16000
         metrics.append(info)
         notify({"type": "progress", "fraction": min(1, (start + size) / len(audio)), **info})
-    # Unconfirmed identities remain visible as candidates, not selectable targets.
-    ready = {s["id"] for s in processor.registry.snapshot() if s["ready"]}
-    return AudioPacket(audio, {k: v for k, v in tracks.items() if k in ready}), {
+    # Provisional identities can already be selected; confidence stays in the report.
+    return AudioPacket(audio, tracks), {
         "sample_rate": 16000, "duration_seconds": len(audio) / 16000,
         "window_seconds": window_seconds, "speakers": processor.registry.snapshot(),
         "chunks": metrics, "compute_seconds": sum(x["compute_seconds"] for x in metrics),
@@ -146,7 +147,8 @@ class FilePlayer:
 
 
 class LiveSession:
-    def __init__(self, input_device, output_device, control, notify, backend=None, window_seconds=4):
+    def __init__(self, input_device, output_device, control, notify, backend=None,
+                 window_seconds=LIVE_WINDOW_SECONDS):
         self.input_device, self.output_device = input_device, output_device
         self.control, self.notify = control, notify
         self.backend = backend

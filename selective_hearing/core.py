@@ -48,7 +48,7 @@ class SpeakerRegistry:
     """Session-only identities, at most two; unmatched audio is never forced.
 
     Joint one-to-one assignment handles separator output permutations. New
-    identities need two independent chunks to become selectable. References
+    identities are selectable immediately; two independent chunks confirm them. References
     remain fixed to avoid gradual contamination by separation artifacts.
     """
     def __init__(self, threshold=0.55, new_threshold=0.40, margin=0.08):
@@ -109,16 +109,19 @@ class AudioPacket:
     captured_at: float = 0.0
 
     def select(self, mode):
-        if mode == "all":
-            return self.original
-        if mode == "mute":
-            return np.zeros_like(self.original)
-        # Never leak the mixture when a target cannot be identified.
-        track = self.tracks.get(mode)
-        return track if track is not None else np.zeros_like(self.original)
+        return self.slice(mode, 0, len(self.original))
 
     def slice(self, mode, start, end):
         """Read only the callback-sized region, including for mute/missing IDs."""
+        if mode.startswith('exclude:'):
+            excluded = mode.split(':', 1)[1]
+            result = np.zeros(end - start, np.float32)
+            # Only pass identified, separated tracks. Never subtract from the mixture:
+            # that would leak the excluded person when identity matching fails.
+            for identity, track in self.tracks.items():
+                if identity != excluded:
+                    result += track[start:end]
+            return result
         track = self.original if mode == "all" else self.tracks.get(mode)
         return track[start:end] if track is not None else np.zeros(end - start, np.float32)
 

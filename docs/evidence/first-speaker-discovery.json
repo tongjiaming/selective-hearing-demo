@@ -1,0 +1,22 @@
+{
+  "source": "spk1_snt1.wav",
+  "sha256": "2f7315ccf543b6368528b098cd895098c154f222cd55ff7b5f66b50feb383c56",
+  "input_seconds": 1.5,
+  "compute_seconds": 0.715830700006336,
+  "speakers": [
+    {
+      "id": "speaker_1",
+      "ready": false,
+      "observations": 1,
+      "seconds": 1.47
+    }
+  ],
+  "active": [
+    "speaker_1"
+  ],
+  "first_observation_controls_enabled": true,
+  "listen_has_separated_audio": true,
+  "exclude_only_speaker_outputs_silence": true,
+  "microphone_opened": false,
+  "note": "Public single-speaker recording, real pretrained inference and Tk control callbacks. Not microphone or end-to-end latency measurement."
+}

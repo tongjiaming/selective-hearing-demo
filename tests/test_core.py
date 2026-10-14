@@ -48,6 +48,15 @@ def test_selected_target_absence_is_silence_not_mixture():
     assert np.all(packet.select("speaker_1") == 0)
 
 
+def test_excluding_first_person_is_silent_until_another_identified_person_arrives():
+    packet = AudioPacket(np.full(10, .9, np.float32), {'speaker_1': np.full(10, .2, np.float32)})
+    np.testing.assert_array_equal(packet.select('exclude:speaker_1'), 0)
+    packet.tracks['speaker_2'] = np.arange(10, dtype=np.float32) / 20
+    np.testing.assert_allclose(packet.slice('exclude:speaker_1', 2, 5), [.1, .15, .2])
+    packet.tracks.clear()
+    np.testing.assert_array_equal(packet.select('exclude:speaker_1'), 0)  # no mixture leakage
+
+
 def test_bounded_buffer_drops_oldest_and_survives_partial_read():
     buffer = PlaybackBuffer(10)
     buffer.put(AudioPacket(np.ones(8, np.float32) * .1))

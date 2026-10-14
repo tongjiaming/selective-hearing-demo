@@ -1,5 +1,5 @@
 from queue import Queue
-from threading import Event
+from threading import Event, Thread
 
 import numpy as np
 import soundfile as sf
@@ -95,15 +95,40 @@ def test_file_tracks_stay_aligned_across_permutation(tmp_path):
     assert sf.info(folder / "speaker_1.wav").frames == 128000
 
 
-def test_cancel_and_short_unconfirmed_file(tmp_path):
+def test_cancel_and_short_file_keeps_selectable_provisional_tracks(tmp_path):
     source = tmp_path / "input.wav"
     sf.write(source, np.ones(16000 * 2, np.float32) * .15, 16000)
     packet, report = process_file(source, FakeBackend())
-    assert len(packet.tracks) == 0  # one observation is insufficient
+    assert len(packet.tracks) == 2  # first observation is selectable, not yet confirmed
+    assert not any(s['ready'] for s in report['speakers'])
     cancel = Event()
     cancel.set()
     with pytest.raises(InterruptedError):
         process_file(source, FakeBackend(), cancel=cancel)
+
+
+def test_live_first_person_event_before_second_observation_without_hardware():
+    class SingleSpeaker(FakeBackend):
+        def separate(self, audio):
+            return [audio, np.zeros_like(audio)]
+    events = Queue()
+    session = LiveSession(0, 1, OutputControl(), events.put, SingleSpeaker())
+    session.worker = Thread(target=session._work, daemon=True)
+    session.worker.start()
+    try:
+        for _ in range(75):
+            session._input(np.full((320, 1), .1, np.float32), 320, None,
+                           SimpleNamespace(input_overflow=False))
+        event = events.get(timeout=3)
+        assert event['seconds'] == 1.5
+        assert event['active'] == ['speaker_1']
+        assert event['speakers'][0]['observations'] == 1
+        assert not event['speakers'][0]['ready']
+        packet = session.playback.packets[0]
+        assert np.any(packet.select('speaker_1'))
+        assert not np.any(packet.select('exclude:speaker_1'))
+    finally:
+        session.stop()
 
 
 def test_file_callback_switch_keeps_position_without_device():
