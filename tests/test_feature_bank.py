@@ -32,6 +32,7 @@ def test_repeated_weak_predictions_cannot_absorb_a_different_person(tmp_path):
     for _ in range(4):
         registry.assign([voice(60)], [1.2])
     again = SpeakerRegistry(store=ProfileStore(store.path))
+    assert again.assign([voice(90)], [1.2]) == [None]
     assert again.assign([voice(90)], [1.2]) == ['speaker_2']
     assert again.assign([voice(90)], [1.2]) == ['speaker_2']
     assert len(again.feature_bank.reference_samples(again.feature_bank.samples, again.speakers)) < len(again.feature_bank.samples)

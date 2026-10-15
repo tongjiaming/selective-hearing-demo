@@ -29,7 +29,9 @@ def test_first_short_voice_is_immediate_and_later_short_voice_accumulates(tmp_pa
     assert registry.assign([voice(0), voice(90)], [.2, .3]) == ['speaker_1', None]
     assert len(store.load_speakers()) == 1 and not registry.speakers[0].ready
     registry = SpeakerRegistry(store=ProfileStore(store.path))
+    assert registry.assign([voice(90)], [.3]) == [None]
     assert registry.assign([voice(90)], [.3]) == ['speaker_2']
+    assert registry.assign([voice(180)], [1.2]) == [None]
     assert registry.assign([voice(180)], [1.2]) == ['speaker_3']
     assert registry.assign([voice(90)], [.3]) == ['speaker_2']
     assert len(SpeakerRegistry(store=ProfileStore(store.path)).speakers) == 3

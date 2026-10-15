@@ -21,6 +21,11 @@ class VoiceSample:
     speaker_id: str | None
     batch_id: int = 0
     reference_eligible: bool = True
+    embedding_seconds: float | None = None
+
+    @property
+    def evidence_seconds(self):
+        return self.seconds if self.embedding_seconds is None else self.embedding_seconds
 
 
 class FeatureBank:
@@ -28,8 +33,8 @@ class FeatureBank:
         self.samples = list(samples)
         self.next_id = max((s.id for s in self.samples), default=0) + 1
 
-    def add(self, vector, seconds, identity, batch_id=0, reference_eligible=True):
-        sample = VoiceSample(self.next_id, vector.copy(), seconds, identity, batch_id, reference_eligible)
+    def add(self, vector, seconds, identity, batch_id=0, reference_eligible=True, embedding_seconds=None):
+        sample = VoiceSample(self.next_id, vector.copy(), seconds, identity, batch_id, reference_eligible, embedding_seconds)
         self.next_id += 1
         self.samples.append(sample)
         return sample
@@ -54,7 +59,7 @@ class FeatureBank:
         """
         accepted = []
         for sample in samples:
-            if sample.speaker_id is None or sample.seconds < 1.0 or not sample.reference_eligible:
+            if sample.speaker_id is None or sample.evidence_seconds < 1.0 or not sample.reference_eligible:
                 continue
             scores = {speaker.id: float(sample.vector @ speaker.vector) for speaker in speakers}
             own = scores.get(sample.speaker_id, -1.0)

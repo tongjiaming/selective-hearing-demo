@@ -88,7 +88,7 @@ def test_file_tracks_stay_aligned_across_permutation(tmp_path):
     packet, report = process_file(source, FakeBackend())
     assert len(packet.tracks) == 2
     np.testing.assert_allclose(packet.tracks["speaker_1"], .1)
-    np.testing.assert_allclose(packet.tracks["speaker_2"][:64000], -.1)  # immediate provisional track
+    np.testing.assert_allclose(packet.tracks["speaker_2"][:64000], 0)  # unclassified until corroborated
     np.testing.assert_allclose(packet.tracks["speaker_2"][64000:], -.1)
     folder = tmp_path / "result"
     export_result(packet, report, folder)
@@ -100,8 +100,10 @@ def test_cancel_and_short_file_keeps_selectable_provisional_tracks(tmp_path):
     source = tmp_path / "input.wav"
     sf.write(source, np.ones(16000 * 2, np.float32) * .15, 16000)
     packet, report = process_file(source, FakeBackend())
-    assert len(packet.tracks) == 2  # both are selectable on the first usable block
-    assert report['chunks'][0]['pending_speakers'] == 0
+    assert len(packet.tracks) == 1  # first control is immediate; second voice awaits corroboration
+    assert report['chunks'][0]['pending_speakers'] == 1
+    # Pending audio stays in the independently controlled unclassified track.
+    assert np.any(packet.original - sum(packet.tracks.values()))
     assert not any(s['ready'] for s in report['speakers'])
     cancel = Event()
     cancel.set()

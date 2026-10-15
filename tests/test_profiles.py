@@ -60,6 +60,7 @@ def test_provisional_profiles_survive_without_creating_extra_profile_on_load(tmp
     store = ProfileStore(tmp_path / 'people.sqlite3')
     registry = SpeakerRegistry(store=store)
     registry.assign([voice()], [1.2])
+    assert registry.assign([voice(90)], [1.2]) == [None]
     assert registry.assign([voice(90)], [1.2]) == ['speaker_2']
     assert not registry.candidates
     restored = SpeakerRegistry(store=store)

@@ -43,6 +43,8 @@ def test_new_people_are_not_capped_at_two_and_restore_from_disk(tmp_path):
     path = tmp_path / 'voices.sqlite3'
     registry = SpeakerRegistry(store=ProfileStore(path))
     for i in range(8):
+        if i:
+            assert registry.assign([vector(i)], [1.2]) == [None]
         assert registry.assign([vector(i)], [1.2]) == [f'speaker_{i + 1}']
     restored = SpeakerRegistry(store=ProfileStore(path))
     for i in reversed(range(8)):
@@ -87,7 +89,7 @@ def test_shared_identity_uses_longer_track_for_single_learning_observation(tmp_p
 def test_distinct_simultaneous_voices_keep_ids_across_output_permutations(tmp_path):
     store = ProfileStore(tmp_path / 'voices.sqlite3')
     registry = SpeakerRegistry(store=store)
-    assert registry.assign([vector(0), vector(1)], [1.2, 1.2]) == ['speaker_1', 'speaker_2']
+    assert registry.assign([vector(0), vector(1)], [1.2, 1.2]) == ['speaker_1', None]
     for _ in range(5):
         assert registry.assign([vector(1), vector(0)], [.3, .3]) == ['speaker_2', 'speaker_1']
     assert store.load_conflicts() == {('speaker_1', 'speaker_2')}
@@ -99,6 +101,7 @@ def test_two_outputs_cannot_promote_pending_voice_within_same_window():
     registry.assign([vector(0)], [.3])
     assert registry.assign([vector(1), vector(1)], [.4, .4]) == [None, None]
     assert len(registry.speakers) == 1 and registry.candidates[0].observations == 1
+    assert registry.assign([vector(1)], [.4]) == [None]
     assert registry.assign([vector(1)], [.4]) == ['speaker_2']
 
 

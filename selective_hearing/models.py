@@ -125,6 +125,7 @@ class Processor:
         self.history = context[-self.context_samples:].copy() if self.context_samples else np.empty(0, np.float32)
         self.reference_eligible = self.position - len(context) >= self.reference_end
         tracks, vectors, durations = [], [], []
+        self.embedding_durations = []
         voiced_seconds = []
         mixture_rms = float(np.sqrt(np.mean(audio16 ** 2))) if len(audio16) else 0.0
         minimum_samples = int(MIN_SPEECH_SECONDS * 16000)
@@ -147,6 +148,7 @@ class Processor:
                     continue
                 vectors.append(self.backend.embedding(speech))
                 durations.append(current_samples / 16000)
+                self.embedding_durations.append(len(speech) / 16000)
                 tracks.append(track)
         if vectors and self.reference_eligible:
             self.reference_end = self.position
@@ -158,7 +160,8 @@ class Processor:
         tracks, vectors, durations, voiced_seconds = self.extract_features(audio16)
         mixture_rms = float(np.sqrt(np.mean(audio16 ** 2))) if len(audio16) else 0.0
         minimum_samples = int(MIN_SPEECH_SECONDS * 16000)
-        ids = self.registry.assign(vectors, durations, reference_eligible=self.reference_eligible)
+        ids = self.registry.assign(vectors, durations, reference_eligible=self.reference_eligible,
+                                   embedding_durations=self.embedding_durations)
         mapped = {}
         for identity, track in zip(ids, tracks):
             if identity is not None:
@@ -176,6 +179,8 @@ class Processor:
             if decision['status'] == 'confirming':
                 messages.append(f"新声音确认中：稳定证据 {decision['observations']}/{decision['required_observations']}，"
                                 f"有效语音 {decision['seconds']:.1f}/{decision['required_seconds']:.1f} 秒")
+                if decision.get('needs_stable_seed'):
+                    messages.append('等待较完整的人声片段，或三段一致短句，避免重复建人')
                 if decision['observations'] < decision['required_observations']:
                     if decision.get('collected_observations', 1) > decision['observations']:
                         messages.append('已收到多段人声，但声纹一致性不足；可尝试加长分析窗口')

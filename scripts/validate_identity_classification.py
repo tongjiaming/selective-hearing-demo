@@ -6,6 +6,7 @@ No microphone is opened. Only aggregate metrics/IDs/hashes are exported.
 import argparse
 import base64
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import subprocess
@@ -87,7 +88,8 @@ def extract(backend, wave, truths, window, context_seconds=0):
                           (len(qualities) == 1 or qualities[order[0]]-qualities[order[1]] >= .1))
             labels.append(int(order[0]) if unambiguous else -1)
         frames.append({'vectors': vectors, 'durations': durations, 'labels': labels,
-                       'reference_eligible': processor.reference_eligible})
+                       'reference_eligible': processor.reference_eligible,
+                       'embedding_durations': processor.embedding_durations})
     return frames
 
 
@@ -120,7 +122,12 @@ def evaluate(cls, frames, reverse=False, repetitions=1, legacy=False):
         order = list(range(len(frame['vectors'])))
         if reverse:
             order.reverse()
-        kwargs = {} if legacy else {'reference_eligible': frame.get('reference_eligible', True)}
+        parameters = inspect.signature(registry.assign).parameters
+        kwargs = {}
+        if 'reference_eligible' in parameters:
+            kwargs['reference_eligible'] = frame.get('reference_eligible', True)
+        if 'embedding_durations' in parameters:
+            kwargs['embedding_durations'] = [frame.get('embedding_durations', frame['durations'])[i] for i in order]
         result = registry.assign([frame['vectors'][i] for i in order], [frame['durations'][i] for i in order], **kwargs)
         row = [None] * len(order)
         for i, identity in zip(order, result):
