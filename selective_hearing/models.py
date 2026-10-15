@@ -120,5 +120,6 @@ class Processor:
             "rtf": elapsed / max(duration, 0.001),
             "active": [s for s in ids if s is not None],
             "unmatched": sum(s is None for s in ids),
+            "pending_speakers": len(self.registry.candidates),
             "speakers": self.registry.snapshot(),
         }

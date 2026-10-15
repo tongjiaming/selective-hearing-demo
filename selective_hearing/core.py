@@ -44,32 +44,96 @@ class Speaker:
         return self.observations >= 2 and self.seconds >= 1.5
 
 
+@dataclass(eq=False)
+class VoiceCandidate:
+    vector: np.ndarray
+    seconds: float
+    first_block: int
+    last_block: int
+    observations: int = 1
+
+
 class SpeakerRegistry:
     """Session-only identities; each separator block still has at most two sources.
 
-    Joint one-to-one assignment handles separator output permutations. New
-    identities are selectable immediately; two independent chunks confirm them. References
-    remain fixed to avoid gradual contamination by separation artifacts.
+    Joint one-to-one assignment handles separator output permutations.
+    The first voice is immediately selectable. Later identities need consistent
+    evidence across separate blocks, not a single mismatched short utterance.
     """
-    def __init__(self, threshold=0.55, new_threshold=0.40, margin=0.08, min_new_seconds=1.0):
+    def __init__(self, threshold=0.55, new_threshold=0.30, margin=0.10, min_new_seconds=1.0,
+                 short_threshold=0.45, candidate_threshold=0.50,
+                 candidate_blocks=6, max_candidates=12):
         self.threshold = threshold
+        self.short_threshold = short_threshold
         self.new_threshold = new_threshold
         self.margin = margin
         self.min_new_seconds = min_new_seconds
+        self.candidate_threshold = candidate_threshold
+        self.candidate_blocks = candidate_blocks
+        self.max_candidates = max_candidates
         self.speakers = []
+        self.candidates = []
+        self.block = 0
+
+    def _discover(self, vector, seconds):
+        if seconds < self.min_new_seconds:
+            return None
+        if not self.speakers:
+            speaker = Speaker('speaker_1', vector, seconds=seconds)
+            self.speakers.append(speaker)
+            return speaker.id
+        # A poor match is not evidence of a new person. Keep a wide uncertainty
+        # band between recognition and discovery, including for short windows.
+        if max(float(vector @ s.vector) for s in self.speakers) >= self.new_threshold:
+            return None
+        available = [(float(vector @ c.vector), c) for c in self.candidates
+                     if c.last_block != self.block]
+        available.sort(key=lambda item: item[0], reverse=True)
+        if (available and available[0][0] >= self.candidate_threshold
+                and (len(available) == 1 or available[0][0] - available[1][0] >= self.margin)):
+            candidate = available[0][1]
+            candidate.vector = unit(candidate.vector * candidate.seconds + vector * seconds)
+            candidate.seconds += seconds
+            candidate.observations += 1
+            candidate.last_block = self.block
+            # Recheck the aggregated reference; never promote a candidate that
+            # now resembles an existing identity or a just-promoted candidate.
+            if max(float(candidate.vector @ s.vector) for s in self.speakers) >= self.new_threshold:
+                self.candidates.remove(candidate)
+                return None
+            if candidate.observations >= 2 and candidate.seconds >= 2 * self.min_new_seconds:
+                speaker = Speaker(f'speaker_{len(self.speakers) + 1}', candidate.vector,
+                                  observations=candidate.observations, seconds=candidate.seconds)
+                self.speakers.append(speaker)
+                self.candidates.remove(candidate)
+                return speaker.id
+        else:
+            # Duplicate separator outputs in one block cannot count as two
+            # sightings, nor occupy multiple slots for the same candidate.
+            if any(float(vector @ c.vector) >= self.candidate_threshold for c in self.candidates):
+                return None
+            self.candidates.append(VoiceCandidate(vector, seconds, self.block, self.block))
+            self.candidates = self.candidates[-self.max_candidates:]
+        return None
 
     def assign(self, vectors, durations):
         if len(vectors) != len(durations) or len(vectors) > 2:
             raise ValueError("每块最多两路声音，特征和时长必须对应")
+        self.block += 1
+        self.candidates = [c for c in self.candidates if self.block - c.first_block <= self.candidate_blocks]
         vectors = [unit(v) for v in vectors]
         known = list(self.speakers)
         scores = np.array([[float(v @ s.vector) for s in known] for v in vectors])
         options = []
-        for row in scores:
+        for i, row in enumerate(scores):
             allowed = [None]
+            # Short utterances have noisier embeddings. A lower match threshold
+            # does not lower the separate, multi-block new-identity requirement.
+            threshold = self.short_threshold if durations[i] < 2.0 else self.threshold
             for j, score in enumerate(row):
                 others = [x for k, x in enumerate(row) if k != j]
-                if score >= self.threshold and (not others or score - max(others) >= self.margin):
+                others.extend(float(vectors[i] @ c.vector) for c in self.candidates)
+                if score >= threshold and (not others or score - max(others) >= self.margin):
                     allowed.append(j)
             options.append(allowed)
         best, best_score = tuple([None] * len(vectors)), -1.0
@@ -88,14 +152,7 @@ class SpeakerRegistry:
                 speaker.seconds += durations[i]
                 result.append(speaker.id)
                 continue
-            # Check newly created identities too; do not duplicate one voice.
-            similarities = [float(vectors[i] @ s.vector) for s in self.speakers]
-            if durations[i] >= self.min_new_seconds and (not similarities or max(similarities) < self.new_threshold):
-                speaker = Speaker(f"speaker_{len(self.speakers) + 1}", vectors[i], seconds=durations[i])
-                self.speakers.append(speaker)
-                result.append(speaker.id)
-            else:
-                result.append(None)
+            result.append(self._discover(vectors[i], durations[i]))
         return result
 
     def snapshot(self):

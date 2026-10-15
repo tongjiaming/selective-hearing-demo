@@ -98,7 +98,7 @@ class App:
         self.model_status = ttk.Label(controls, text="等待加载模型…", foreground="#67758a")
         self.model_status.pack(anchor="w", pady=(8, 0))
         timing_note = ('文件每 4 秒处理一块；处理完成后可循环试听、导出音轨。' if self.file_mode
-                       else f'实时识别每 {LIVE_WINDOW_SECONDS:g} 秒处理一块；首次识别即可选择，仍有采样和计算延迟。')
+                       else f'每 {LIVE_WINDOW_SECONDS:g} 秒分析一次；首位人物立即显示，后续新人需跨片段确认。')
         ttk.Label(controls, text=timing_note, foreground="#9b6500").pack(anchor="w", pady=(4, 0))
 
         people = ttk.LabelFrame(main, text="3  选择收听目标", padding=12)
@@ -212,7 +212,7 @@ class App:
         self.track_area.pack_forget()
         # A new source is a new identity session; a prior target must not carry over.
         self.choose("all")
-        self.people_note.config(text="等待人声。首次识别即可选择，身份确认会继续进行。")
+        self.people_note.config(text="等待人声。首位人物首次识别即可选择，后续新人需跨片段确认。")
 
     def choose(self, mode):
         self.control.set(mode=mode)
@@ -267,7 +267,7 @@ class App:
                 text += " · 确认中"
             self.speaker_labels[identity].config(text=text)
         if speakers:
-            self.people_note.config(text="名字可直接编辑，回车保存。绿色为当前选择；“确认中”可能误判，同时最多分离两路人声。")
+            self.people_note.config(text="名字可直接编辑，回车保存。新人需跨片段确认，避免重复建人；同时最多分离两路人声。")
         else:
             self.people_note.config(text=('尚未识别到足够清晰的人声，请尝试更清晰的录音。' if self.file_mode
                                           else '尚未识别到足够清晰的人声。请查看下方输入电平，并确认麦克风选择。'))
@@ -361,6 +361,8 @@ class App:
                     if self.file_mode and "fraction" in event:
                         self.progress["value"] = event["fraction"]
                     self.status.config(text=f"音频 {event['seconds']:.2f}s / 计算 {event['compute_seconds']:.2f}s / RTF {event['rtf']:.2f}（小于 1 才能跟上输入）")
+                    if event.get('pending_speakers'):
+                        self.status.config(text=self.status['text'] + ' · 新声音确认中，暂未新增人物')
                 elif kind == "file_done":
                     self.file_packet, self.file_report = event["packet"], event["report"]
                     self.play_button.config(state="normal")
