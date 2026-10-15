@@ -1,5 +1,6 @@
 ﻿param(
     [switch]$Models,
+    [switch]$Diart,
     [string]$IndexUrl = 'https://pypi.org/simple',
     [string]$HfEndpoint = 'https://huggingface.co',
     [string]$RuntimeRoot
@@ -27,13 +28,18 @@ $runtimeRoot = if ($environmentItem.LinkType -eq 'Junction') { [string]@($enviro
 $runtimePython = Join-Path $runtimeRoot 'Scripts\python.exe'
 & $runtimePython -m pip install -r requirements.txt --index-url $IndexUrl
 if ($LASTEXITCODE -ne 0) { throw '基础依赖安装失败' }
-if ($Models) {
+if ($Models -or $Diart) {
     & $runtimePython -m pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
     if ($LASTEXITCODE -ne 0) { throw 'PyTorch 安装失败' }
     & $runtimePython -m pip install -r requirements-models.txt --index-url $IndexUrl
     if ($LASTEXITCODE -ne 0) { throw '模型依赖安装失败' }
     & $runtimePython scripts/download_models.py --hf-endpoint $HfEndpoint
     if ($LASTEXITCODE -ne 0) { throw '模型下载失败；可查阅 README 的手动下载方法' }
+}
+if ($Diart) {
+    & $runtimePython -m pip install -r requirements-diart.txt --index-url $IndexUrl
+    if ($LASTEXITCODE -ne 0) { throw 'diart 可选依赖安装失败' }
+    Write-Host 'diart 的完整分段模型需自行在 Hugging Face 接受条件并登录。先运行 scripts/validate_diart.py --check。'
 }
 Write-Host '安装完成。运行 .\run.ps1 打开界面。'
 Write-Host "运行环境：$runtimeRoot"

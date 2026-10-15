@@ -1,0 +1,19 @@
+{
+  "versions": {
+    "diart": "0.9.2",
+    "pyannote.audio": "3.3.2",
+    "pyannote.core": "5.0.0",
+    "torch": "2.5.1+cpu",
+    "torchaudio": "2.5.1+cpu",
+    "numpy": "1.26.4",
+    "matplotlib": "3.8.4",
+    "pandas": "2.2.3"
+  },
+  "imports_verified": true,
+  "pip_check": "passed",
+  "hf_login_available": false,
+  "full_pretrained_pipeline_status": "not_run_requires_model_access",
+  "synthetic_pipeline_plumbing_tests": "passed; not accuracy evidence",
+  "microphone_opened": false,
+  "daily_profiles_modified": false
+}

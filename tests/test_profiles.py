@@ -114,3 +114,15 @@ def test_file_library_is_separate_from_live_library(tmp_path):
     offline = ProfileStore(tmp_path / 'file.sqlite3')
     live.create(voice(), 1, 1.2)
     assert offline.summaries() == []
+
+
+def test_analysis_window_persists_and_rejects_invalid_values(tmp_path):
+    path = tmp_path / 'settings.sqlite3'
+    store = ProfileStore(path)
+    assert store.window_seconds(3) == 3
+    store.set_window_seconds('2.5')
+    assert ProfileStore(path).window_seconds(3) == 2.5
+    for invalid in ['', 'abc', 'nan', 'inf', '0', '-1', '11']:
+        with pytest.raises(ValueError, match='1 到 10'):
+            store.set_window_seconds(invalid)
+        assert store.window_seconds(3) == 2.5

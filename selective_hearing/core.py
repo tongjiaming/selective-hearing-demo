@@ -6,6 +6,7 @@ from threading import Lock
 import numpy as np
 from scipy.signal import resample_poly
 from math import gcd
+import time
 
 
 def mono(audio):
@@ -149,7 +150,7 @@ class SpeakerRegistry:
         if len(vectors) != len(durations) or len(vectors) > 2:
             raise ValueError("每块最多两路声音，特征和时长必须对应")
         self.block += 1
-        self.candidates = [c for c in self.candidates if self.block - c.first_block <= self.candidate_blocks]
+        self._prune_candidates()
         vectors = [unit(v) for v in vectors]
         known = list(self.speakers)
         scores = np.array([[s.similarity(v) for s in known] for v in vectors])
@@ -188,7 +189,16 @@ class SpeakerRegistry:
                 result.append(speaker.id)
                 continue
             result.append(self._discover(vectors[i], durations[i]))
+        self._prune_candidates()
         return result
+
+    def _prune_candidates(self):
+        # Discovery requires distance from every known voice. After promotion or
+        # learning, old candidates that no longer meet that condition must not
+        # compete with their own registered identity on subsequent blocks.
+        self.candidates = [c for c in self.candidates
+                           if self.block - c.first_block <= self.candidate_blocks
+                           and all(s.similarity(c.vector) < self.new_threshold for s in self.speakers)]
 
     def snapshot(self):
         return [{"id": s.id, "ready": s.ready, "observations": s.observations,
@@ -214,6 +224,13 @@ class AudioPacket:
 
     def select(self, mode):
         return self.slice(mode, 0, len(self.original))
+
+    def active(self, start, end):
+        """Activity on identified tracks, independent of listening/mute choices."""
+        if end <= start:
+            return set()
+        return {identity for identity, track in self.tracks.items()
+                if float(np.mean(track[start:end] ** 2)) > 0.002 ** 2}
 
     def slice(self, mode, start, end):
         """Read only the callback-sized region, including for mute/missing IDs."""
@@ -277,6 +294,25 @@ class OutputControl:
             return self.mode == 'all'
 
 
+class SpeakingActivity:
+    """Short hold bridges syllable gaps; snapshots expire even if callbacks stop."""
+    def __init__(self, hold_seconds=0.3):
+        self.hold_seconds = hold_seconds
+        self.lock = Lock()
+        self.seen = {}
+
+    def observe(self, identities, now):
+        with self.lock:
+            self.seen = {key: stamp for key, stamp in self.seen.items()
+                         if now - stamp < self.hold_seconds}
+            self.seen.update({key: now for key in identities})
+
+    def active(self, now=None):
+        now = time.perf_counter() if now is None else now
+        with self.lock:
+            return {key for key, stamp in self.seen.items() if now - stamp < self.hold_seconds}
+
+
 class PlaybackBuffer:
     """Bounded, callback-safe packet queue. Selection applies at output time."""
     def __init__(self, max_samples):
@@ -288,6 +324,7 @@ class PlaybackBuffer:
         self.dropped = 0
         self.underruns = 0
         self.last_age = 0.0
+        self.activity = SpeakingActivity()
 
     def put(self, packet):
         with self.lock:
@@ -301,12 +338,14 @@ class PlaybackBuffer:
 
     def read(self, frames, mode, gain, now):
         output = np.zeros(frames, np.float32)
+        active = set()
         with self.lock:
             written = 0
             while self.packets and written < frames:
                 packet = self.packets[0]
                 count = min(frames - written, len(packet.original) - self.offset)
                 output[written:written + count] = packet.slice(mode, self.offset, self.offset + count)
+                active.update(packet.active(self.offset, self.offset + count))
                 if packet.captured_at:
                     self.last_age = max(0.0, now - packet.captured_at)
                 self.offset += count
@@ -317,4 +356,5 @@ class PlaybackBuffer:
                     self.offset = 0
             if written < frames:
                 self.underruns += 1
+        self.activity.observe(active, now)
         return np.clip(output * gain, -0.95, 0.95)

@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .core import OutputControl, SpeakerRegistry
-from .profiles import ProfileStore, default_profile_path
+from .profiles import ProfileStore, default_profile_path, validate_window_seconds
 from .audio import devices, LiveSession, LIVE_WINDOW_SECONDS
 from .models import ModelBackend
 
@@ -34,6 +34,8 @@ class App:
         self.speaker_labels = {}
         self.speaker_mutes = {}
         self.speaker_names = {}
+        self.speaker_activity = {}
+        self.active_speakers = set()
         self.saved_ids = set()
         self.pending_delete = None
         self.profile_store = None
@@ -72,8 +74,16 @@ class App:
         style.configure('Selected.TButton', background='#c7e7d4', foreground='#17482a')
         style.configure("TLabelframe", background="#eef2f6")
         style.configure("TLabelframe.Label", background="#eef2f6", font=("Microsoft YaHei UI", 10, "bold"))
-        main = ttk.Frame(self.root, padding=16)
-        main.pack(fill="both", expand=True)
+        # Added settings/status rows must remain reachable on smaller displays.
+        page = tk.Canvas(self.root, bg='#eef2f6', highlightthickness=0)
+        page_scroll = ttk.Scrollbar(self.root, orient='vertical', command=page.yview)
+        page_scroll.pack(side='right', fill='y')
+        page.pack(side='left', fill='both', expand=True)
+        page.configure(yscrollcommand=page_scroll.set)
+        main = ttk.Frame(page, padding=16)
+        main_window = page.create_window((0, 0), window=main, anchor='nw')
+        main.bind('<Configure>', lambda _: page.configure(scrollregion=page.bbox('all')))
+        page.bind('<Configure>', lambda event: page.itemconfigure(main_window, width=event.width))
         ttk.Label(main, text='音频文件测试' if self.file_mode else "选择听谁说话", font=("Microsoft YaHei UI", 24, "bold")).pack(anchor="w")
         subtitle = ('导入录音测试分离效果 · 不打开麦克风' if self.file_mode
                     else '启动后自动加载模型并收音 · 点“停止”可随时暂停')
@@ -109,10 +119,24 @@ class App:
             self.ai_check.pack(side="left", padx=6)
             self.start_button.pack(side="left", padx=8)
         ttk.Button(row, text="停止", command=self.stop).pack(side="left")
+        window_row = ttk.Frame(controls)
+        window_row.pack(anchor='w', pady=(8, 0))
+        ttk.Label(window_row, text='分析窗口（秒）').pack(side='left', padx=(0, 8))
+        default_window = 4 if self.file_mode else LIVE_WINDOW_SECONDS
+        seconds = self.profile_store.window_seconds(default_window) if self.profile_store else default_window
+        self.window_choice = tk.StringVar(value=f'{seconds:g}')
+        self.window_box = ttk.Spinbox(window_row, textvariable=self.window_choice,
+                                      from_=1, to=10, increment=.5, width=8,
+                                      command=self.save_window)
+        self.window_box.pack(side='left')
+        self.window_box.bind('<Return>', lambda _: self.save_window())
+        self.window_box.bind('<FocusOut>', lambda _: self.save_window())
+        ttk.Label(window_row, text='1–10 秒；加长通常更稳，但延迟更高。停止后修改。',
+                  foreground='#67758a').pack(side='left', padx=8)
         self.model_status = ttk.Label(controls, text="等待加载模型…", foreground="#67758a")
         self.model_status.pack(anchor="w", pady=(8, 0))
-        timing_note = ('文件每 4 秒处理一块；处理完成后可循环试听、导出音轨。' if self.file_mode
-                       else f'每 {LIVE_WINDOW_SECONDS:g} 秒分析一次；首位人物立即显示，后续新人需跨片段确认。')
+        timing_note = ('按所设窗口分块；处理完成后可循环试听、导出音轨。' if self.file_mode
+                       else '默认 3 秒；首次识别到人物即显示，后续新人需跨片段确认。')
         ttk.Label(controls, text=timing_note, foreground="#9b6500").pack(anchor="w", pady=(4, 0))
 
         people = ttk.LabelFrame(main, text="3  选择收听目标", padding=12)
@@ -122,7 +146,7 @@ class App:
         ttk.Button(self.people_row, text="全部听（原声）", command=lambda: self.choose("all")).pack(side="left", padx=(0, 8))
         ttk.Button(self.people_row, text="全部静音", command=lambda: self.choose("mute")).pack(side="left", padx=(0, 8))
         self.track_area = ttk.Frame(people)
-        self.track_canvas = tk.Canvas(self.track_area, height=112, highlightthickness=0, bg='#eef2f6')
+        self.track_canvas = tk.Canvas(self.track_area, height=156, highlightthickness=0, bg='#eef2f6')
         scrollbar = ttk.Scrollbar(self.track_area, orient='vertical', command=self.track_canvas.yview)
         scrollbar.pack(side='right', fill='y')
         self.track_canvas.pack(side='left', fill='x', expand=True)
@@ -137,6 +161,8 @@ class App:
         self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；可靠语音持续学习。删除资料时会自动停止音频。',
                                       foreground='#536378', wraplength=900)
         self.profile_note.pack(anchor='w', pady=(0, 4))
+        ttk.Label(people, text='绿框表示识别到该人正在说话；不受静音开关影响，随处理后的音频显示，有延迟。',
+                  foreground='#67758a', wraplength=900).pack(anchor='w', pady=(0, 4))
         self.mode_label = ttk.Label(people, text="当前：全部原声", font=("Microsoft YaHei UI", 11, "bold"))
         self.mode_label.pack(anchor="w")
         gain_row = ttk.Frame(people)
@@ -228,6 +254,8 @@ class App:
         self.speaker_labels.clear()
         self.speaker_mutes.clear()
         self.speaker_names.clear()
+        self.speaker_activity.clear()
+        self.active_speakers.clear()
         self.saved_ids.clear()
         self.track_area.pack_forget()
         # Listening choices reset, but identities and names come from local storage.
@@ -321,7 +349,8 @@ class App:
                 self.saved_ids.add(identity)
             if identity not in self.speaker_buttons:
                 self.track_area.pack(fill='x', before=self.people_note, pady=(8, 0))
-                card = ttk.Frame(self.track_grid)
+                card = tk.Frame(self.track_grid, bg='#eef2f6', highlightthickness=2,
+                                highlightbackground='#cbd5e1', highlightcolor='#cbd5e1', padx=7, pady=5)
                 position = len(self.speaker_cards)
                 card.grid(row=position // 2, column=position % 2, sticky='w', padx=(0, 12), pady=4)
                 label = ttk.Label(card)
@@ -330,6 +359,9 @@ class App:
                 name_box.pack(anchor='w')
                 name_box.bind('<FocusOut>', lambda _, key=identity: self.commit_name(key))
                 name_box.bind('<Return>', lambda _, key=identity: self.commit_name(key))
+                activity = ttk.Label(card, text='未在说话', foreground='#67758a')
+                activity.pack(anchor='w')
+                self.speaker_activity[identity] = activity
                 label.pack(anchor='w')
                 row = ttk.Frame(card)
                 row.pack()
@@ -344,7 +376,6 @@ class App:
                 self.speaker_labels[identity] = label
                 self.speaker_mutes[identity] = mute
             text = f"编号 {identity.split('_')[-1]}"
-            text += " · 有声音" if identity in active else ""
             if not speaker["ready"]:
                 text += " · 确认中"
             if speaker.get('saved'):
@@ -356,6 +387,18 @@ class App:
             self.people_note.config(text=('尚未识别到足够清晰的人声，请尝试更清晰的录音。' if self.file_mode
                                           else '尚未识别到足够清晰的人声。请查看下方输入电平，并确认麦克风选择。'))
         self.refresh_track_controls()
+
+    def update_speaking(self, active=()):
+        active = set(active) & self.speaker_cards.keys()
+        for identity in self.active_speakers ^ active:
+            if identity not in self.speaker_cards:
+                continue
+            speaking = identity in active
+            color = '#16a34a' if speaking else '#cbd5e1'
+            self.speaker_cards[identity].config(highlightbackground=color, highlightcolor=color)
+            self.speaker_activity[identity].config(text='● 正在说话' if speaking else '未在说话',
+                                                 foreground='#15803d' if speaking else '#67758a')
+        self.active_speakers = active
 
     def commit_name(self, identity):
         if identity not in self.speaker_names:
@@ -370,6 +413,20 @@ class App:
                 return False
         return True
 
+    def save_window(self):
+        try:
+            self.selected_window_seconds()
+            return True
+        except ValueError as exc:
+            self.status.config(text=str(exc))
+            return False
+
+    def selected_window_seconds(self):
+        seconds = validate_window_seconds(self.window_choice.get())
+        if self.profile_store is not None:
+            self.profile_store.set_window_seconds(seconds)
+        return seconds
+
     def start_live(self, automatic=False):
         if self.file_mode or not self.alive:
             return
@@ -377,6 +434,7 @@ class App:
             self.status.config(text='正在删除人物资料，请稍候再开始收音。')
             return
         try:
+            window_seconds = self.selected_window_seconds()
             if self.profile_error:
                 raise ValueError('人物资料无法加载：' + self.profile_error)
             if self.file_busy:
@@ -396,12 +454,13 @@ class App:
             notify = lambda event: self.events.put({**event, "generation": generation})
             registry = SpeakerRegistry(store=self.profile_store) if self.ai.get() else None
             session = LiveSession(input_id, output_id, self.control, notify, self.backend if self.ai.get() else None,
-                                  registry=registry)
+                                  registry=registry, window_seconds=window_seconds)
             session.start()
             self.session = session
             self.start_button.config(state="disabled")
             self.ai_check.config(state="disabled")
-            self.status.config(text=f"正在收音 · AI 每 {LIVE_WINDOW_SECONDS:g} 秒处理一块" if self.ai.get() else "正在收音 · 原声测试（未启用分人）")
+            self.window_box.config(state='disabled')
+            self.status.config(text=f"正在收音 · AI 每 {window_seconds:g} 秒处理一块" if self.ai.get() else "正在收音 · 原声测试（未启用分人）")
             if not self.ai.get():
                 self.people_note.config(text='当前是原声模式，不识别人。启用“自动识别人声并分离”后才会生成人物按钮。')
         except Exception as exc:
@@ -411,6 +470,7 @@ class App:
                 messagebox.showerror("无法开始", str(exc))
 
     def stop(self):
+        self.update_speaking()
         self.auto_start_pending = False
         if self.startup_after is not None:
             self.root.after_cancel(self.startup_after)
@@ -427,6 +487,7 @@ class App:
             self.player = None
         self.start_button.config(state="normal")
         self.ai_check.config(state="normal")
+        self.window_box.config(state='disabled' if self.file_busy else 'normal')
         self.status.config(text="已停止音频输入与播放")
 
     def poll(self):
@@ -437,6 +498,7 @@ class App:
                 if kind in ("file_done", "file_error"):
                     self.file_busy = False
                     self.file_button.config(state="normal")
+                    self.window_box.config(state='normal')
                 if "generation" in event and event["generation"] != self.generation:
                     continue
                 if kind == "loaded":
@@ -479,6 +541,8 @@ class App:
                 stats = self.session.stats()
                 self.stats_label.config(text=f"输入电平 {stats['level']:.3f} · 输入丢块 {stats['input_drops']} · 输出丢块 {stats['output_drops']} · 缓冲 {stats['queue_seconds']:.1f}s\n软件块年龄 {stats['software_age']:.1f}s（非端到端延迟）· 空缓冲回调 {stats['empty_callbacks']}")
         self.finish_delete()
+        source = self.session or self.player
+        self.update_speaking(source.active_speakers() if source is not None else ())
         if self.alive:
             self.poll_after = self.root.after(100, self.poll)
 
@@ -487,6 +551,7 @@ class App:
             self.status.config(text='正在等待音频处理结束并删除资料，请稍候再关闭。')
             return
         self.stop()
+        self.save_window()
         if not self.save_names():
             return
         self.alive = False

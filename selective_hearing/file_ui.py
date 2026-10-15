@@ -42,6 +42,11 @@ class FileApp(App):
             return
         if self.file_busy:
             return
+        try:
+            window_seconds = self.selected_window_seconds()
+        except ValueError as exc:
+            self.status.config(text=str(exc))
+            return
         path = filedialog.askopenfilename(filetypes=[('音频', '*.wav *.flac *.ogg'), ('所有文件', '*.*')])
         if not path:
             return
@@ -55,6 +60,7 @@ class FileApp(App):
         self.file_cancel = Event()
         self.file_packet = self.file_report = None
         self.file_button.config(state='disabled')
+        self.window_box.config(state='disabled')
         self.play_button.config(state='disabled')
         self.export_button.config(state='disabled')
         self.file_label.config(text=Path(path).name)
@@ -65,7 +71,8 @@ class FileApp(App):
             try:
                 notify = lambda e: self.events.put({**e, 'generation': generation})
                 packet, report = process_file(path, self.backend, notify, cancel,
-                                              registry=SpeakerRegistry(store=self.profile_store))
+                                              registry=SpeakerRegistry(store=self.profile_store),
+                                              window_seconds=window_seconds)
                 self.events.put({'type': 'file_done', 'packet': packet, 'report': report, 'generation': generation})
             except Exception as exc:
                 self.events.put({'type': 'file_error', 'message': str(exc), 'generation': generation})

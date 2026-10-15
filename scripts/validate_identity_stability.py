@@ -65,6 +65,7 @@ def evaluate(backend, old_class, waveform, references, window_seconds):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline-ref', default='21200ae')
+    parser.add_argument('--live-window-seconds', type=float, default=1.5)
     parser.add_argument('--output', default='docs/evidence/identity-stability.json')
     args = parser.parse_args()
     references, manifest = [], []
@@ -81,10 +82,11 @@ def main():
     silence = np.zeros(64000, np.float32)
     arrival = [np.concatenate([a[:64000], silence, a[64000:]]), np.concatenate([silence, b])]
     rng = np.random.default_rng(20261015)
-    fixtures = [('single_live', a, [a], 1.5), ('overlap_live', a + b, [a, b], 1.5),
-                ('arrival_live', sum(arrival), arrival, 1.5),
+    window = args.live_window_seconds
+    fixtures = [('single_live', a, [a], window), ('overlap_live', a + b, [a, b], window),
+                ('arrival_live', sum(arrival), arrival, window),
                 ('quiet_noisy_overlap_live', (a + b) * .3 + rng.normal(0, .001, len(a)).astype(np.float32),
-                 [a * .3, b * .3], 1.5), ('overlap_file', a + b, [a, b], 4)]
+                 [a * .3, b * .3], window), ('overlap_file', a + b, [a, b], 4)]
     old_class = baseline_registry(args.baseline_ref)
     backend = ModelBackend()
     cases = {}
@@ -92,7 +94,7 @@ def main():
         cases[name] = evaluate(backend, old_class, waveform, refs, window)
         print(name, json.dumps({k: v for k, v in cases[name].items() if not k.endswith('assignments')}, ensure_ascii=False), flush=True)
     report = {'baseline_ref': args.baseline_ref, 'source': 'SpeechBrain public ASR samples',
-              'method': 'Same separated embeddings sent to old and new registries. Live windows are non-overlapping 1.5 s.',
+              'method': f'Same separated embeddings sent to old and new registries. Live windows are non-overlapping {window:g} s.',
               'limitations': 'Small synthetic English fixtures; not a user microphone recording. Unknown segments remain silent; no guarantee of real-room accuracy.',
               'manifest': manifest, 'cases': cases}
     destination = ROOT / args.output

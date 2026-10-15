@@ -7,7 +7,7 @@ import pytest
 from types import SimpleNamespace
 
 from selective_hearing.audio import process_file, export_result, FilePlayer, LiveSession
-from selective_hearing.core import AudioPacket, OutputControl
+from selective_hearing.core import AudioPacket, OutputControl, SpeakingActivity
 from selective_hearing import audio
 
 
@@ -114,7 +114,7 @@ def test_live_first_person_event_before_second_observation_without_hardware():
         def separate(self, audio):
             return [audio, np.zeros_like(audio)]
     events = Queue()
-    session = LiveSession(0, 1, OutputControl(), events.put, SingleSpeaker())
+    session = LiveSession(0, 1, OutputControl(), events.put, SingleSpeaker(), window_seconds=1.5)
     session.worker = Thread(target=session._work, daemon=True)
     session.worker.start()
     try:
@@ -140,6 +140,7 @@ def test_file_callback_switch_keeps_position_without_device():
     player.control = OutputControl()
     player.control.set(gain=1)
     player.offset, player.loop, player.finished = 0, True, False
+    player.activity = SpeakingActivity()
     data = np.empty((3, 1), np.float32)
     player._callback(data, 3, None, None)
     player.control.set(mode="speaker_1")
@@ -162,6 +163,7 @@ def test_callback_resumes_original_at_current_position_after_unmute(kind):
         player = object.__new__(FilePlayer)
         player.packet, player.control = packet, control
         player.offset, player.loop, player.finished = 0, True, False
+        player.activity = SpeakingActivity()
         callback = player._callback
     data = np.empty((320, 1), np.float32)
     status = SimpleNamespace(output_underflow=False)
@@ -183,3 +185,22 @@ def test_live_stop_is_idempotent_without_devices():
     session.stop()
     session.stop()
     assert session.cancel.is_set()
+
+
+def test_file_activity_follows_current_position_even_with_zero_gain(monkeypatch):
+    player = object.__new__(FilePlayer)
+    a = np.concatenate([np.full(320, .1, np.float32), np.zeros(320, np.float32)])
+    player.packet = AudioPacket(a, {'speaker_1': a})
+    player.control = OutputControl()
+    player.control.set(mode='mute', gain=0)
+    player.offset, player.loop, player.finished = 0, False, False
+    player.activity = SpeakingActivity()
+    now = [1.0]
+    monkeypatch.setattr(audio.time, 'perf_counter', lambda: now[0])
+    data = np.empty((320, 1), np.float32)
+    player._callback(data, 320, None, None)
+    np.testing.assert_array_equal(data, 0)
+    assert player.active_speakers() == {'speaker_1'}
+    now[0] += .5
+    player._callback(data, 320, None, None)
+    assert not player.active_speakers()

@@ -9,10 +9,11 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from .core import AudioPacket, PlaybackBuffer, mono, resample
+from .core import AudioPacket, PlaybackBuffer, SpeakingActivity, mono, resample
 from .models import Processor
 
-LIVE_WINDOW_SECONDS = 1.5
+LIVE_WINDOW_SECONDS = 3.0
+FAST_WINDOW_SECONDS = 1.5
 
 
 def stream_settings(device):
@@ -111,6 +112,7 @@ class FilePlayer:
         self.packet, self.control, self.loop = packet, control, loop
         self.offset = 0
         self.finished = False
+        self.activity = SpeakingActivity()
         self.stream = sd.OutputStream(device=device, samplerate=16000, channels=1,
                                       dtype="float32", blocksize=320, callback=self._callback,
                                       extra_settings=stream_settings(device))
@@ -120,6 +122,7 @@ class FilePlayer:
         length = len(self.packet.original)
         data = np.zeros(frames, np.float32)
         written = 0
+        active = set()
         while written < frames:
             remaining = length - self.offset
             if remaining == 0:
@@ -130,9 +133,14 @@ class FilePlayer:
                 remaining = length
             count = min(frames - written, remaining)
             data[written:written + count] = self.packet.slice(mode, self.offset, self.offset + count)
+            active.update(self.packet.active(self.offset, self.offset + count))
             written += count
             self.offset += count
         outdata[:, 0] = np.clip(data * gain, -0.95, 0.95)
+        self.activity.observe(active, time.perf_counter())
+
+    def active_speakers(self):
+        return self.activity.active() if not self.finished else set()
 
     def start(self):
         self.stream.start()
@@ -251,6 +259,9 @@ class LiveSession:
                 "output_underflows": self.output_underflows, "output_drops": self.playback.dropped,
                 "empty_callbacks": self.playback.underruns, "level": self.level,
                 "software_age": self.playback.last_age, "queue_seconds": self.playback.samples / 16000}
+
+    def active_speakers(self):
+        return self.playback.activity.active() if not self.cancel.is_set() else set()
 
     def stop(self):
         self.cancel.set()

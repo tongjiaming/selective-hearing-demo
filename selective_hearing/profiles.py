@@ -12,6 +12,16 @@ from .model_assets import ASSETS
 MODEL_KEY = 'ecapa-fbank80-sentence-mean-v1:' + ASSETS['ecapa.ckpt']['sha256']
 
 
+def validate_window_seconds(value):
+    try:
+        seconds = float(value)
+    except (ValueError, TypeError):
+        raise ValueError('分析窗口请输入 1 到 10 之间的秒数。') from None
+    if not math.isfinite(seconds) or not 1 <= seconds <= 10:
+        raise ValueError('分析窗口请输入 1 到 10 之间的秒数。')
+    return seconds
+
+
 def default_profile_path(file_mode=False):
     # Shared user Documents path also works with this machine's desktop launcher.
     return Path.home() / 'Documents' / 'SelectiveHearing' / 'profiles' / (
@@ -92,6 +102,17 @@ class ProfileStore:
                  'seconds': seconds, 'ready': observations >= 2 and seconds >= 1.5, 'saved': True,
                  'learned_observations': learned}
                 for n, name, observations, seconds, learned in rows]
+
+    def window_seconds(self, default):
+        with self.connection() as db:
+            row = db.execute("SELECT value FROM metadata WHERE key='window_seconds'").fetchone()
+        return validate_window_seconds(row[0] if row else default)
+
+    def set_window_seconds(self, value):
+        seconds = validate_window_seconds(value)
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO metadata VALUES ('window_seconds', ?)", (str(seconds),))
+        return seconds
 
     def create(self, vector, observations, seconds):
         vector = self.vector(vector)

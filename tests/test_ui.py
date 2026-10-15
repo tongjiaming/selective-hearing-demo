@@ -36,6 +36,7 @@ class FakeLiveSession:
         self.worker = None
         self.started = False
         self.registry = kwargs.get('registry')
+        self.window_seconds = kwargs.get('window_seconds')
     def start(self):
         self.started = True
     def stop(self):
@@ -43,6 +44,8 @@ class FakeLiveSession:
     def stats(self):
         return dict(level=0, input_drops=0, output_drops=0, queue_seconds=0,
                     software_age=0, empty_callbacks=0)
+    def active_speakers(self):
+        return set()
 
 
 def drain(app):
@@ -72,8 +75,11 @@ def test_default_launch_loads_then_starts_and_has_no_file_controls(monkeypatch, 
         app.events.put({'type': 'loaded', 'backend': object()})
         drain(app)
         assert app.session.started and not app.auto_start_pending
+        assert app.session.window_seconds == 3
+        assert str(app.window_box['state']) == 'disabled'
         app.stop()
         assert app.session is None
+        assert str(app.window_box['state']) == 'normal'
     finally: app.close()
 
 
@@ -307,6 +313,32 @@ def seed_person(app):
     return speaker.id
 
 
+def test_saved_person_border_follows_audio_even_if_muted_and_clears_on_stop(monkeypatch, root):
+    import numpy as np
+    import time
+    from selective_hearing.audio import LiveSession
+    from selective_hearing.core import AudioPacket
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        identity = seed_person(app)
+        assert app.speaker_activity[identity]['text'] == '未在说话'
+        app.session = LiveSession(0, 1, app.control, app.events.put)
+        app.session.playback.put(AudioPacket(np.full(320, .1, np.float32),
+                                            {identity: np.full(320, .1, np.float32)}))
+        app.set_person(identity, False)
+        app.session.playback.read(320, app.control.get()[0], 0, time.perf_counter())
+        drain(app)
+        assert app.speaker_cards[identity]['highlightbackground'] == '#16a34a'
+        assert app.speaker_activity[identity]['text'] == '● 正在说话'
+        assert not app.control.track_enabled(identity)
+        app.stop()
+        assert app.speaker_cards[identity]['highlightbackground'] == '#cbd5e1'
+        assert app.speaker_activity[identity]['text'] == '未在说话'
+    finally:
+        app.close()
+
+
 def test_delete_while_capturing_prompts_and_cancel_keeps_capture(monkeypatch, root):
     startup_fixture(monkeypatch)
     app = App(root, auto_start=False)
@@ -418,5 +450,53 @@ def test_invalid_profile_blocks_automatic_capture_without_erasing_file(monkeypat
         assert not calls and app.session is None and app.profile_error
         assert path.read_bytes() == b'broken profile'
         assert '原文件未覆盖' in app.profile_note['text']
+    finally:
+        app.close()
+
+
+def test_custom_window_reaches_live_session_and_survives_reopen(monkeypatch, tk_session):
+    startup_fixture(monkeypatch)
+    window = tk.Toplevel(tk_session); window.withdraw()
+    app = App(window, auto_start=False)
+    app.backend = object()
+    app.window_choice.set('2.5')
+    app.start_live()
+    assert app.session.window_seconds == 2.5
+    app.close()
+    window = tk.Toplevel(tk_session); window.withdraw()
+    app = App(window, auto_start=False)
+    try:
+        assert app.window_choice.get() == '2.5'
+        app.window_choice.set('nan')
+        app.backend = object()
+        app.start_live(automatic=True)
+        assert app.session is None and '1 到 10' in app.status['text']
+    finally:
+        app.close()
+
+
+def test_custom_window_reaches_file_processor(monkeypatch, root):
+    import numpy as np
+    from selective_hearing.core import AudioPacket
+    startup_fixture(monkeypatch)
+    app = FileApp(root)
+    calls = []
+    class InlineThread:
+        def __init__(self, target, **kwargs): self.target = target
+        def start(self): self.target()
+    monkeypatch.setattr('selective_hearing.file_ui.Thread', InlineThread)
+    monkeypatch.setattr('selective_hearing.file_ui.filedialog.askopenfilename', lambda **kw: 'sample.wav')
+    def process(*args, **kwargs):
+        calls.append(kwargs['window_seconds'])
+        return AudioPacket(np.zeros(320, np.float32)), {'speakers': []}
+    monkeypatch.setattr('selective_hearing.file_ui.process_file', process)
+    try:
+        app.backend = object()
+        app.window_choice.set('6')
+        app.import_file()
+        assert calls == [6]
+        assert str(app.window_box['state']) == 'disabled'
+        drain(app)
+        assert str(app.window_box['state']) == 'normal'
     finally:
         app.close()

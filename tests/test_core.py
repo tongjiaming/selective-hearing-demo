@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer, OutputControl, resample, unit
+from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer, OutputControl, SpeakingActivity, resample, unit
 
 
 def test_output_permutation_does_not_swap_identity():
@@ -85,6 +85,27 @@ def test_averaged_candidate_is_rechecked_against_existing_person():
     # aggregate is not. This must not create another identity for a weak voice.
     assert registry.assign([[.29, radius * .6, radius * .8]], [1.2]) == [None]
     assert len(registry.speakers) == 1 and not registry.candidates
+
+
+def test_promoted_voice_retires_old_candidates_so_they_cannot_mute_it():
+    # Two initially inconsistent observations of B create separate candidates.
+    # Once B has a confirmed profile, the older variant belongs to its
+    # uncertainty band and must no longer act as a competing new person.
+    registry = SpeakerRegistry()
+    a = np.array([1., 0., 0., 0.])
+    b = np.array([0., 1., 0., 0.])
+    variant = unit([0., .48, np.sqrt(1 - .48 ** 2), 0.])
+    registry.assign([a, b], [1.2, 1.2])
+    registry.assign([variant], [1.2])
+    assert len(registry.candidates) == 2
+    assert registry.assign([b], [1.2]) == ['speaker_2']
+    assert not registry.candidates
+    assert registry.assign([variant], [1.2]) == ['speaker_2']
+    assert len(registry.speakers) == 2
+    # A truly distinct C must still be confirmed, not merged into B.
+    c = [0., 0., 0., 1.]
+    assert registry.assign([c], [1.2]) == [None]
+    assert registry.assign([c], [1.2]) == ['speaker_3']
 
 
 def test_independent_tracks_keep_other_choices_and_missing_tracks_silent():
@@ -201,6 +222,29 @@ def test_silence_and_invalid_embeddings():
         unit([0, 0])
     with pytest.raises(ValueError):
         unit([np.nan, 1])
+
+
+def test_speaking_activity_tracks_timeline_even_when_muted_and_expires():
+    buffer = PlaybackBuffer(1280)
+    a = np.concatenate([np.full(320, .1, np.float32), np.zeros(320, np.float32)])
+    b = a[::-1].copy()
+    buffer.put(AudioPacket(a + b, {'speaker_1': a, 'speaker_2': b}))
+    # Merely enqueueing an analyzed block must not light up the speaker yet.
+    assert not buffer.activity.active(1)
+    np.testing.assert_array_equal(buffer.read(320, 'mute', 0, 1), 0)
+    assert buffer.activity.active(1) == {'speaker_1'}
+    buffer.read(320, 'mute', 0, 1.02)
+    assert buffer.activity.active(1.02) == {'speaker_1', 'speaker_2'}
+    assert buffer.activity.active(1.31) == {'speaker_2'}
+    assert not buffer.activity.active(1.33)  # also expires if output callbacks stop
+    buffer.read(320, 'all', 1, 2)
+    assert not buffer.activity.active(2)
+
+
+def test_speaking_activity_ignores_low_energy_and_unknown_audio():
+    packet = AudioPacket(np.ones(320, np.float32), {'speaker_1': np.full(320, .001, np.float32)})
+    assert not packet.active(0, 320)
+    assert not packet.active(0, 0)
 
 
 def test_resampling_preserves_duration():
