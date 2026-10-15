@@ -101,7 +101,8 @@ class Processor:
         tracks, vectors, durations = [], [], []
         voiced_seconds = []
         mixture_rms = float(np.sqrt(np.mean(audio16 ** 2))) if len(audio16) else 0.0
-        if len(audio16) >= 16000 and mixture_rms > 0.002:
+        minimum_samples = int(MIN_SPEECH_SECONDS * 16000)
+        if len(audio16) >= minimum_samples and mixture_rms > 0.002:
             separated = self.backend.separate(audio16)
             for track in separated:
                 track_rms = float(np.sqrt(np.mean(track ** 2)))
@@ -109,7 +110,7 @@ class Processor:
                     continue
                 speech = self.backend.speech(track)
                 voiced_seconds.append(len(speech) / 16000)
-                if len(speech) < int(MIN_SPEECH_SECONDS * 16000):
+                if len(speech) < minimum_samples:
                     continue
                 vectors.append(self.backend.embedding(speech))
                 durations.append(len(speech) / 16000)
@@ -134,14 +135,14 @@ class Processor:
                     elif decision['observations'] == 1:
                         messages.append('已检出人声，等待相似的跨窗片段')
             elif decision['status'].startswith('ambiguous'):
-                messages.append('有声音暂无法区分归属，特征已暂存')
+                messages.append('已检出人声，归属待确认；特征已暂存，并非已确认的背景音')
             elif decision['status'] == 'short_speech':
                 messages.append('有效人声太短，暂不建档')
         if not messages:
             if mixture_rms <= .002:
                 messages.append('输入过弱，尚未进入人声识别；请检查麦克风输入音量')
-            elif len(audio16) < 16000:
-                messages.append('本段不足 1 秒，未参与识别')
+            elif len(audio16) < minimum_samples:
+                messages.append(f'本段不足 {MIN_SPEECH_SECONDS:g} 秒，未参与声纹识别')
             else:
                 messages.append(f'本段有效人声最长 {max(voiced_seconds, default=0):.2f} 秒，未达到 {MIN_SPEECH_SECONDS:g} 秒')
         if self.registry.last_corrections:
@@ -153,6 +154,8 @@ class Processor:
             "rtf": elapsed / max(duration, 0.001),
             "active": [s for s in ids if s is not None],
             "unmatched": sum(s is None for s in ids),
+            "detected_speech_tracks": sum(seconds > 0 for seconds in voiced_seconds),
+            "short_speech_tracks": sum(MIN_SPEECH_SECONDS <= seconds < .5 for seconds in durations),
             "pending_speakers": len(self.registry.candidates),
             "recognition_status": '；'.join(dict.fromkeys(messages)),
             "identity_decisions": decisions,

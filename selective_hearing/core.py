@@ -135,12 +135,15 @@ class SpeakerRegistry:
         # candidates here: loading a profile must not create people by itself.
         newest = max((s.batch_id for s in self.feature_bank.samples), default=0)
         for sample in self.feature_bank.samples:
-            if sample.speaker_id is not None or sample.batch_id < newest - self.candidate_blocks:
+            if sample.speaker_id is not None or sample.batch_id < newest - self.max_candidate_age:
                 continue
             nearest = max(self._scores(sample.vector, self.speakers), default=-1.0)
             if nearest >= self.discovery_ceiling:
                 continue
             block = sample.batch_id - newest
+            self.candidates = [c for c in self.candidates
+                               if block - c.last_block <= self.candidate_blocks
+                               and block - c.first_block <= self.max_candidate_age]
             matches = sorted(((float(sample.vector @ c.vector), c) for c in self.candidates),
                              key=lambda pair: pair[0], reverse=True)
             if matches and matches[0][0] >= self.candidate_threshold:
@@ -204,9 +207,9 @@ class SpeakerRegistry:
             self.candidates.append(candidate)
             self.candidates = self.candidates[-self.max_candidates:]
         needed = 3 if candidate.borderline else 2
-        seconds_needed = needed * self.min_new_seconds
+        seconds_needed = self.min_new_seconds if not self.speakers else needed * self.min_new_seconds
         observations = candidate.consistent_observations if candidate.borderline else candidate.observations
-        if observations >= needed and candidate.seconds >= seconds_needed:
+        if observations >= needed and candidate.seconds + 1e-8 >= seconds_needed:
             identity = self._register(candidate.vector, candidate.seconds, candidate.observations)
             self.candidates.remove(candidate)
             return self._discovery_result('created', identity)
@@ -285,8 +288,15 @@ class SpeakerRegistry:
         # learning, old candidates that no longer meet that condition must not
         # compete with their own registered identity on subsequent blocks.
         self.candidates = [c for c in self.candidates
-                           if self.block - c.first_block <= self.candidate_blocks
+                           if self.block - c.last_block <= self.candidate_blocks
+                           and self.block - c.first_block <= self.max_candidate_age
                            and max(self._scores(c.vector, self.speakers), default=-1.0) < self.discovery_ceiling]
+
+    @property
+    def max_candidate_age(self):
+        # Ten 0.2-second utterances need more than six analysis blocks. Retain
+        # active candidates, but still bound their total lifetime and memory.
+        return max(self.candidate_blocks, 30)
 
     def snapshot(self):
         if self.store is not None:

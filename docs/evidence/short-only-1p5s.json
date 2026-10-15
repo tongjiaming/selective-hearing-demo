@@ -1,0 +1,195 @@
+{
+  "baseline_ref": "cc055c0",
+  "method": "24 non-overlapping public waveform crops, 0.30 s each at offsets 0.5 and 1.2 s in each of six utterances per person; zero-padded to 1.5 s blocks, speaker 1 then speaker 2. Same actual model embeddings to both registries; old duration gate 0.5 s, new 0.2 s. No enrollment or repeated crop.",
+  "limitations": "Artificial short English cuts, not naturally spoken short Chinese utterances. Identity count alone is not correct classification; no guarantee of microphone results.",
+  "manifest": [
+    {
+      "file": "spk1_snt1.wav",
+      "sha256": "2f7315ccf543b6368528b098cd895098c154f222cd55ff7b5f66b50feb383c56"
+    },
+    {
+      "file": "spk1_snt2.wav",
+      "sha256": "e1f125a318f4026991bf78f5c41481be0fbcf9b3b2fd72284f9824cb851c3034"
+    },
+    {
+      "file": "spk1_snt3.wav",
+      "sha256": "dc85f251ecb6f89652e8e3add9f35a39e86cb64a48384c89255437fd0f1bbc69"
+    },
+    {
+      "file": "spk1_snt4.wav",
+      "sha256": "719e441a93a3ec220dfc4337c30944aa1774847739ae9d461c3280b612cf869d"
+    },
+    {
+      "file": "spk1_snt5.wav",
+      "sha256": "6972d80554dfb14e5ad23c7b355a870e9beb18ab2331fbd4b12ff1777e6ed277"
+    },
+    {
+      "file": "spk1_snt6.wav",
+      "sha256": "8811bcbdb867c887cdb036aadd97fa2a8023e90610b314c9913f79f712eb7b6c"
+    },
+    {
+      "file": "spk2_snt1.wav",
+      "sha256": "5f3f534ba99f159358c6ee2e4fb5e42b3b9399f37f4e290651405c76095f26f0"
+    },
+    {
+      "file": "spk2_snt2.wav",
+      "sha256": "589bcda06796c124544138d7ff40562c146be5e06c1765f2fb4d27c22d19ea8a"
+    },
+    {
+      "file": "spk2_snt3.wav",
+      "sha256": "3831efa2081105f8c820312e83f605a320581761c75c52e06f908a12a5da8472"
+    },
+    {
+      "file": "spk2_snt4.wav",
+      "sha256": "6dfc7295435a97f2b50c5e95e895fe223b56c61d64a4e0bcb3a663e45f893f4f"
+    },
+    {
+      "file": "spk2_snt5.wav",
+      "sha256": "cf312453d454a3e006ac84ef84bd5880452b57e1a8d717f7e37dae65ceec8044"
+    },
+    {
+      "file": "spk2_snt6.wav",
+      "sha256": "cdec920cdcbbb0b38110b958f6e90a4726c87be8d9d3f9d3a0834a1cc950cf6d"
+    }
+  ],
+  "result": {
+    "expected_people": 2,
+    "before_people": 0,
+    "after_people": 0,
+    "window_seconds": 1.5,
+    "duration_seconds": 36.0,
+    "input_sha256": "42575a3f00238a19b0b068fd33f13caa95ba65a5fa2d180eed7cfe99beea0d89",
+    "eligible_tracks": 19,
+    "before_eligible_tracks": 0,
+    "before_matched_tracks": 0,
+    "after_matched_tracks": 0,
+    "before_assignments": [
+      [
+        null
+      ],
+      [],
+      [
+        null
+      ],
+      [],
+      [],
+      [
+        null
+      ],
+      [],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      []
+    ],
+    "after_assignments": [
+      [
+        null
+      ],
+      [],
+      [
+        null
+      ],
+      [],
+      [],
+      [
+        null
+      ],
+      [],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      [
+        null
+      ],
+      []
+    ]
+  }
+}

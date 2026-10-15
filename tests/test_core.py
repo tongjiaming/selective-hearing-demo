@@ -57,6 +57,22 @@ def test_candidate_requires_distinct_blocks_and_expires():
     assert registry.assign([[0, 1]], [1.2]) == ['speaker_2']
 
 
+def test_ten_short_utterances_keep_active_candidate_and_rounding_does_not_delay():
+    registry = SpeakerRegistry()
+    registry.assign([[1, 0]], [1.2])
+    for index in range(10):
+        assert registry.assign([[0, 1]], [.2]) == (['speaker_2'] if index == 9 else [None])
+    assert len(registry.speakers) == 2
+
+
+def test_unrelated_short_utterances_do_not_accumulate_into_one_person():
+    registry = SpeakerRegistry()
+    for vector in np.eye(40):
+        assert registry.assign([vector], [.25]) == [None]
+    assert not registry.speakers
+    assert len(registry.candidates) <= registry.max_candidates
+
+
 def test_short_voice_drift_matches_without_lowering_new_person_evidence():
     registry = SpeakerRegistry()
     registry.assign([[1, 0, 0]], [1.2])

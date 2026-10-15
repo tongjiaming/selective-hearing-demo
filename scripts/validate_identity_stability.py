@@ -118,7 +118,7 @@ def main():
     report = {'baseline_ref': args.baseline_ref, 'source': 'SpeechBrain public ASR samples',
               'baseline_min_speech_seconds': args.baseline_min_speech_seconds,
               'method': f'Same separated embeddings sent to old and new registries. Live windows are non-overlapping {args.live_window_seconds:g} s; file windows are 4 s.',
-              'limitations': 'Small synthetic English fixtures; not a user microphone recording. Unknown segments remain silent; no guarantee of real-room accuracy.',
+              'limitations': 'Small synthetic English fixtures; not a user microphone recording. Per-person tracks are zero on unmatched segments; playback of unclassified audio follows its independent switch. No guarantee of real-room accuracy.',
               'manifest': manifest, 'cases': cases}
     destination = ROOT / args.output
     destination.parent.mkdir(parents=True, exist_ok=True)
