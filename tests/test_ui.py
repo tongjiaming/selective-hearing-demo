@@ -274,7 +274,7 @@ def test_names_save_on_close_restore_cards_and_delete(monkeypatch, tk_session):
         assert '已保存' in restored.speaker_labels['speaker_1']['text']
         restored.reset_people()
         assert restored.speaker_names['speaker_1'].get() == '小王'
-        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', lambda *args: True)
+        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', lambda *args, **kwargs: True)
         restored.delete_person('speaker_1')
         assert not restored.speaker_cards and not restored.profile_store.summaries()
     finally:
@@ -296,6 +296,113 @@ def test_auto_start_uses_saved_profiles_and_keeps_choice_during_loading(monkeypa
         drain(app)
         assert app.session.registry.speakers[0].id == 'speaker_1'
         assert not app.control.track_enabled('speaker_1')
+    finally:
+        app.close()
+
+
+def seed_person(app):
+    import numpy as np
+    speaker = app.profile_store.create(np.eye(192, dtype=np.float32)[0], 2, 2.4)
+    app.restore_people()
+    return speaker.id
+
+
+def test_delete_while_capturing_prompts_and_cancel_keeps_capture(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        identity = seed_person(app)
+        session = FakeLiveSession()
+        app.session = session
+        prompts = []
+        def decline(*args, **kwargs):
+            prompts.append((args, kwargs))
+            return False
+        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', decline)
+        app.delete_person(identity)
+        assert prompts and prompts[0][1]['parent'] is root
+        assert app.session is session and not session.cancel.is_set()
+        assert app.pending_delete is None and app.profile_store.summaries()
+    finally:
+        app.close()
+
+
+def test_delete_waits_for_inflight_worker_and_discards_stale_cards(monkeypatch, root):
+    from types import SimpleNamespace
+    from selective_hearing.profiles import ProfileStore
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        identity = seed_person(app)
+        old_generation = app.generation
+        stale_people = app.profile_store.summaries()
+        session = FakeLiveSession()
+        running = [True]
+        session.worker = SimpleNamespace(is_alive=lambda: running[0])
+        app.session = session
+        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', lambda *a, **kw: True)
+        app.delete_person(identity)
+        assert session.cancel.is_set() and app.pending_delete
+        assert app.profile_store.summaries()  # no deletion during a possible write
+        app.start_live()
+        assert app.session is session and app.pending_delete
+        running[0] = False
+        app.events.put({'type': 'progress', 'speakers': stale_people, 'generation': old_generation})
+        drain(app)
+        assert app.session is None and app.pending_delete is None
+        assert not app.speaker_cards and '已删除' in app.profile_note['text']
+        assert not ProfileStore(app.profile_store.path).summaries()
+        app.events.put({'type': 'progress', 'speakers': stale_people, 'generation': old_generation})
+        drain(app)
+        assert not app.speaker_cards  # queued old results cannot restore the card
+    finally:
+        app.pending_delete = None
+        app.close()
+
+
+def test_delete_cancels_file_processing_and_invalidates_playback(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    app = FileApp(root)
+    try:
+        identity = seed_person(app)
+        old_generation = app.generation
+        app.file_busy = True
+        app.file_packet = app.file_report = object()
+        player = FakeLiveSession()
+        app.player = player
+        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', lambda *a, **kw: True)
+        app.delete_person(identity)
+        assert app.pending_delete and app.file_cancel.is_set() and player.cancel.is_set()
+        assert app.profile_store.summaries()
+        # Completion of the cancelled task releases the deletion, but cannot
+        # reinstall its old packet or show an error for intentional cancellation.
+        app.events.put({'type': 'file_error', 'message': '已取消', 'generation': old_generation})
+        drain(app)
+        assert not app.file_busy and app.pending_delete is None
+        assert not app.profile_store.summaries() and not app.speaker_cards
+        assert app.file_packet is None and app.file_report is None
+        assert str(app.play_button['state']) == str(app.export_button['state']) == 'disabled'
+    finally:
+        app.pending_delete = None
+        app.close()
+
+
+def test_delete_failure_preserves_card_and_allows_retry(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        identity = seed_person(app)
+        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', lambda *a, **kw: True)
+        original_delete = app.profile_store.delete
+        def fail(_):
+            raise OSError('locked')
+        monkeypatch.setattr(app.profile_store, 'delete', fail)
+        app.delete_person(identity)
+        assert app.pending_delete is None and identity in app.speaker_cards
+        assert app.profile_store.summaries() and 'locked' in app.profile_note['text']
+        monkeypatch.setattr(app.profile_store, 'delete', original_delete)
+        app.delete_person(identity)
+        assert not app.profile_store.summaries() and not app.speaker_cards
     finally:
         app.close()
 

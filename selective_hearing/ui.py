@@ -35,6 +35,7 @@ class App:
         self.speaker_mutes = {}
         self.speaker_names = {}
         self.saved_ids = set()
+        self.pending_delete = None
         self.profile_store = None
         self.profile_error = None
         try:
@@ -133,7 +134,7 @@ class App:
         self.track_canvas.bind('<Configure>', lambda e: self.track_canvas.itemconfigure(grid_window, width=e.width))
         self.people_note = ttk.Label(people, text="可陆续识别多个人；当前模型同时最多分离两路人声，背景音暂不能独立分离。", foreground="#67758a", wraplength=910)
         self.people_note.pack(anchor="w", pady=8)
-        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；可靠语音持续学习。删除资料请先停止。',
+        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；可靠语音持续学习。删除资料时会自动停止音频。',
                                       foreground='#536378', wraplength=900)
         self.profile_note.pack(anchor='w', pady=(0, 4))
         self.mode_label = ttk.Label(people, text="当前：全部原声", font=("Microsoft YaHei UI", 11, "bold"))
@@ -217,8 +218,8 @@ class App:
                 self.events.put({"type": "load_error", "message": str(exc)})
         Thread(target=work, daemon=True).start()
 
-    def reset_people(self, reset_selection=True):
-        if not self.save_names():
+    def reset_people(self, reset_selection=True, save_names=True):
+        if save_names and not self.save_names():
             raise ValueError('名字保存失败，请检查人物资料提示后重试。')
         for card in self.speaker_cards.values():
             card.destroy()
@@ -246,23 +247,50 @@ class App:
         return success
 
     def delete_person(self, identity):
-        if self.session is not None or self.player is not None or self.file_busy:
-            self.profile_note.config(text='请先停止收音、播放或文件处理，再删除人物资料。')
+        if self.pending_delete is not None:
+            self.profile_note.config(text='正在等待音频处理结束并删除资料，请稍候。')
+            return
+        if identity not in self.saved_ids:
             return
         name = self.speaker_names[identity].get()
-        if not messagebox.askyesno('删除人物资料', f'删除“{name}”的名字和已学习声纹？再次听到此人时会重新识别。'):
+        if not messagebox.askyesno('删除人物资料',
+                f'删除“{name}”的名字和已学习声纹？\n将自动停止收音、播放和文件处理。删除后保持停止；再次开始收音时可能重新识别此人。',
+                parent=self.root):
             return
         try:
+            self.stop()
+            self.pending_delete = (identity, name)
+            self.profile_note.config(text=f'正在停止音频处理，随后删除“{name}”…')
+            self.finish_delete()
+        except Exception as exc:
+            self.pending_delete = None
+            self.profile_note.config(text=f'删除未完成：{exc}')
+
+    def finish_delete(self):
+        if self.pending_delete is None or self.file_busy:
+            return
+        if self.session is not None:
+            if self.session.worker and self.session.worker.is_alive():
+                return
+            self.session = None
+        identity, name = self.pending_delete
+        try:
+            if not self.save_names():
+                raise ValueError('名字保存失败，人物资料尚未删除。')
             self.profile_store.delete(identity)
             self.saved_ids.discard(identity)
             self.file_packet = self.file_report = None
             if self.file_mode:
                 self.play_button.config(state='disabled')
                 self.export_button.config(state='disabled')
-            self.reset_people()
+            self.reset_people(save_names=False)
             self.profile_note.config(text=f'已删除“{name}”的本机资料。')
+            self.status.config(text='人物资料已删除，音频保持停止。可点击开始收音继续。' if not self.file_mode
+                               else '人物资料已删除，播放已停止。可重新导入音频测试。')
         except Exception as exc:
             self.profile_note.config(text=f'删除未完成：{exc}')
+        finally:
+            self.pending_delete = None
 
     def choose(self, mode):
         self.control.set(mode=mode)
@@ -344,6 +372,9 @@ class App:
 
     def start_live(self, automatic=False):
         if self.file_mode or not self.alive:
+            return
+        if self.pending_delete is not None:
+            self.status.config(text='正在删除人物资料，请稍候再开始收音。')
             return
         try:
             if self.profile_error:
@@ -442,15 +473,19 @@ class App:
         except Empty:
             pass
         if self.session:
-            if self.session.cancel.is_set() and not self.session.worker.is_alive():
+            if self.session.cancel.is_set() and (not self.session.worker or not self.session.worker.is_alive()):
                 self.session = None
             else:
                 stats = self.session.stats()
                 self.stats_label.config(text=f"输入电平 {stats['level']:.3f} · 输入丢块 {stats['input_drops']} · 输出丢块 {stats['output_drops']} · 缓冲 {stats['queue_seconds']:.1f}s\n软件块年龄 {stats['software_age']:.1f}s（非端到端延迟）· 空缓冲回调 {stats['empty_callbacks']}")
+        self.finish_delete()
         if self.alive:
             self.poll_after = self.root.after(100, self.poll)
 
     def close(self):
+        if self.pending_delete is not None:
+            self.status.config(text='正在等待音频处理结束并删除资料，请稍候再关闭。')
+            return
         self.stop()
         if not self.save_names():
             return

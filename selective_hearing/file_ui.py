@@ -31,6 +31,9 @@ class FileApp(App):
         self.progress.pack(fill='x', pady=(10, 0))
 
     def import_file(self):
+        if self.pending_delete is not None:
+            self.status.config(text='正在删除人物资料，请稍候再导入。')
+            return
         if self.profile_error:
             self.status.config(text='人物资料无法加载：' + self.profile_error)
             return
@@ -69,7 +72,7 @@ class FileApp(App):
         Thread(target=work, daemon=True).start()
 
     def play_file(self):
-        if self.file_packet is None:
+        if self.file_packet is None or self.pending_delete is not None:
             return
         try:
             device = self.selected_device(self.output_box, self.outputs)
