@@ -6,6 +6,12 @@ from selective_hearing.file_ui import FileApp
 from selective_hearing.ui import App
 
 
+@pytest.fixture(autouse=True)
+def isolated_profiles(monkeypatch, tmp_path):
+    monkeypatch.setattr('selective_hearing.ui.default_profile_path',
+                        lambda file_mode=False: tmp_path / ('file.sqlite3' if file_mode else 'live.sqlite3'))
+
+
 @pytest.fixture(scope='module')
 def tk_session():
     # One Tcl interpreter, as in the real application; isolated windows per test.
@@ -25,10 +31,11 @@ def root(tk_session):
 
 
 class FakeLiveSession:
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         self.cancel = Event()
         self.worker = None
         self.started = False
+        self.registry = kwargs.get('registry')
     def start(self):
         self.started = True
     def stop(self):
@@ -215,5 +222,65 @@ def test_multiple_people_have_independent_controls_and_scrollable_cards(monkeypa
         assert app.speaker_buttons['speaker_2']['style'] == 'Selected.TButton'
         app.reset_people()
         assert not app.track_area.winfo_manager()
+    finally:
+        app.close()
+
+
+def test_names_save_on_close_restore_cards_and_delete(monkeypatch, tk_session):
+    import numpy as np
+    from selective_hearing.core import SpeakerRegistry
+    monkeypatch.setattr('selective_hearing.ui.devices', lambda **kw: [])
+    window = tk.Toplevel(tk_session); window.withdraw()
+    app = App(window, auto_start=False)
+    registry = SpeakerRegistry(store=app.profile_store)
+    vector = np.eye(192, dtype=np.float32)[0]
+    registry.assign([vector], [1.2])
+    app.update_people(registry.snapshot())
+    app.speaker_names['speaker_1'].set('小王')  # close without Return/FocusOut
+    app.close()
+    window = tk.Toplevel(tk_session); window.withdraw()
+    restored = App(window, auto_start=False)
+    try:
+        assert restored.speaker_names['speaker_1'].get() == '小王'
+        assert '已保存' in restored.speaker_labels['speaker_1']['text']
+        restored.reset_people()
+        assert restored.speaker_names['speaker_1'].get() == '小王'
+        monkeypatch.setattr('selective_hearing.ui.messagebox.askyesno', lambda *args: True)
+        restored.delete_person('speaker_1')
+        assert not restored.speaker_cards and not restored.profile_store.summaries()
+    finally:
+        restored.close()
+
+
+def test_auto_start_uses_saved_profiles_and_keeps_choice_during_loading(monkeypatch, root):
+    import numpy as np
+    from selective_hearing.ui import default_profile_path
+    from selective_hearing.profiles import ProfileStore
+    store = ProfileStore(default_profile_path())
+    store.create(np.eye(192, dtype=np.float32)[0], 2, 2.4)
+    startup_fixture(monkeypatch)
+    app = App(root)
+    try:
+        root.update()
+        app.set_person('speaker_1', False)
+        app.events.put({'type': 'loaded', 'backend': object()})
+        drain(app)
+        assert app.session.registry.speakers[0].id == 'speaker_1'
+        assert not app.control.track_enabled('speaker_1')
+    finally:
+        app.close()
+
+
+def test_invalid_profile_blocks_automatic_capture_without_erasing_file(monkeypatch, root):
+    from selective_hearing.ui import default_profile_path
+    path = default_profile_path()
+    path.write_bytes(b'broken profile')
+    calls = startup_fixture(monkeypatch)
+    app = App(root)
+    try:
+        root.update()
+        assert not calls and app.session is None and app.profile_error
+        assert path.read_bytes() == b'broken profile'
+        assert '原文件未覆盖' in app.profile_note['text']
     finally:
         app.close()

@@ -1,0 +1,147 @@
+{
+  "source": "SpeechBrain public ASR samples",
+  "protocol": "Held-out public speech comparison of frozen vs persistent adaptive profiles.\n\nEnrollment: first 1.5 s of sentence 1. Learning: non-overlapping live-size\nwindows from sentences 2 and 3. Test: sentences 4, 5, 6, never used for learning.\nThis isolates identity learning, not mixed-speaker separation or microphone quality.\n",
+  "limitations": "Two English speakers, eight eligible held-out segments; clean speech features only. Not proof of monotonic improvement in a real room.",
+  "manifest": [
+    {
+      "file": "spk1_snt1.wav",
+      "sha256": "2f7315ccf543b6368528b098cd895098c154f222cd55ff7b5f66b50feb383c56"
+    },
+    {
+      "file": "spk1_snt2.wav",
+      "sha256": "e1f125a318f4026991bf78f5c41481be0fbcf9b3b2fd72284f9824cb851c3034"
+    },
+    {
+      "file": "spk1_snt3.wav",
+      "sha256": "dc85f251ecb6f89652e8e3add9f35a39e86cb64a48384c89255437fd0f1bbc69"
+    },
+    {
+      "file": "spk1_snt4.wav",
+      "sha256": "719e441a93a3ec220dfc4337c30944aa1774847739ae9d461c3280b612cf869d"
+    },
+    {
+      "file": "spk1_snt5.wav",
+      "sha256": "6972d80554dfb14e5ad23c7b355a870e9beb18ab2331fbd4b12ff1777e6ed277"
+    },
+    {
+      "file": "spk1_snt6.wav",
+      "sha256": "8811bcbdb867c887cdb036aadd97fa2a8023e90610b314c9913f79f712eb7b6c"
+    },
+    {
+      "file": "spk2_snt1.wav",
+      "sha256": "5f3f534ba99f159358c6ee2e4fb5e42b3b9399f37f4e290651405c76095f26f0"
+    },
+    {
+      "file": "spk2_snt2.wav",
+      "sha256": "589bcda06796c124544138d7ff40562c146be5e06c1765f2fb4d27c22d19ea8a"
+    },
+    {
+      "file": "spk2_snt3.wav",
+      "sha256": "3831efa2081105f8c820312e83f605a320581761c75c52e06f908a12a5da8472"
+    },
+    {
+      "file": "spk2_snt4.wav",
+      "sha256": "6dfc7295435a97f2b50c5e95e895fe223b56c61d64a4e0bcb3a663e45f893f4f"
+    },
+    {
+      "file": "spk2_snt5.wav",
+      "sha256": "cf312453d454a3e006ac84ef84bd5880452b57e1a8d717f7e37dae65ceec8044"
+    },
+    {
+      "file": "spk2_snt6.wav",
+      "sha256": "cdec920cdcbbb0b38110b958f6e90a4726c87be8d9d3f9d3a0834a1cc950cf6d"
+    }
+  ],
+  "summary": {
+    "test_segments": 8,
+    "restart_restored_profiles": true,
+    "names_restored": [
+      "Test person 1",
+      "Test person 2"
+    ],
+    "learned_observations": [
+      4,
+      2
+    ],
+    "frozen_correct": 7,
+    "frozen_wrong_person": 0,
+    "frozen_mean_target_similarity": 0.561,
+    "learned_correct": 8,
+    "learned_wrong_person": 0,
+    "learned_mean_target_similarity": 0.6451
+  },
+  "held_out": [
+    {
+      "person": 1,
+      "sentence": 4,
+      "offset_seconds": 0.0,
+      "frozen_identity": "speaker_1",
+      "frozen_target_similarity": 0.6036,
+      "learned_identity": "speaker_1",
+      "learned_target_similarity": 0.6682
+    },
+    {
+      "person": 1,
+      "sentence": 4,
+      "offset_seconds": 1.5,
+      "frozen_identity": "speaker_1",
+      "frozen_target_similarity": 0.6239,
+      "learned_identity": "speaker_1",
+      "learned_target_similarity": 0.6507
+    },
+    {
+      "person": 1,
+      "sentence": 5,
+      "offset_seconds": 0.0,
+      "frozen_identity": "speaker_1",
+      "frozen_target_similarity": 0.5389,
+      "learned_identity": "speaker_1",
+      "learned_target_similarity": 0.6061
+    },
+    {
+      "person": 1,
+      "sentence": 5,
+      "offset_seconds": 1.5,
+      "frozen_identity": "speaker_1",
+      "frozen_target_similarity": 0.4657,
+      "learned_identity": "speaker_1",
+      "learned_target_similarity": 0.5941
+    },
+    {
+      "person": 1,
+      "sentence": 6,
+      "offset_seconds": 0.0,
+      "frozen_identity": "speaker_1",
+      "frozen_target_similarity": 0.6035,
+      "learned_identity": "speaker_1",
+      "learned_target_similarity": 0.6035
+    },
+    {
+      "person": 2,
+      "sentence": 4,
+      "offset_seconds": 0.0,
+      "frozen_identity": null,
+      "frozen_target_similarity": 0.449,
+      "learned_identity": "speaker_2",
+      "learned_target_similarity": 0.5696
+    },
+    {
+      "person": 2,
+      "sentence": 5,
+      "offset_seconds": 0.0,
+      "frozen_identity": "speaker_2",
+      "frozen_target_similarity": 0.5864,
+      "learned_identity": "speaker_2",
+      "learned_target_similarity": 0.7129
+    },
+    {
+      "person": 2,
+      "sentence": 6,
+      "offset_seconds": 0.0,
+      "frozen_identity": "speaker_2",
+      "frozen_target_similarity": 0.6173,
+      "learned_identity": "speaker_2",
+      "learned_target_similarity": 0.7559
+    }
+  ]
+}

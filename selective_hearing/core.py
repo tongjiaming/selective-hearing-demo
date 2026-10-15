@@ -38,6 +38,30 @@ class Speaker:
     vector: np.ndarray
     observations: int = 1
     seconds: float = 0.0
+    learned_vector: np.ndarray | None = None
+    learned_seconds: float = 0.0
+    learned_observations: int = 0
+
+    def similarity(self, vector):
+        return max(float(vector @ self.vector),
+                   float(vector @ self.learned_vector) if self.learned_vector is not None else -1.0)
+
+    def observe(self, vector, seconds, learn):
+        self.observations += 1
+        self.seconds += seconds
+        # Keep the original reference intact. Learning cannot walk indefinitely
+        # toward an unrelated voice through a chain of borderline matches.
+        if not learn or float(vector @ self.vector) < 0.35 or self.similarity(vector) < 0.55:
+            return
+        center = self.learned_vector if self.learned_vector is not None else self.vector
+        weight = min(self.learned_seconds, 20.0) if self.learned_vector is not None else 2.0
+        added = min(seconds, 3.0)
+        updated = unit(center * weight + vector * added)
+        if float(updated @ self.vector) < 0.65:
+            return
+        self.learned_vector = updated
+        self.learned_seconds = weight + added
+        self.learned_observations += 1
 
     @property
     def ready(self):
@@ -54,7 +78,7 @@ class VoiceCandidate:
 
 
 class SpeakerRegistry:
-    """Session-only identities; each separator block still has at most two sources.
+    """Optionally persistent identities; each separator block has at most two sources.
 
     Joint one-to-one assignment handles separator output permutations.
     The first voice is immediately selectable. Later identities need consistent
@@ -62,7 +86,7 @@ class SpeakerRegistry:
     """
     def __init__(self, threshold=0.55, new_threshold=0.30, margin=0.10, min_new_seconds=1.0,
                  short_threshold=0.45, candidate_threshold=0.50,
-                 candidate_blocks=6, max_candidates=12):
+                 candidate_blocks=6, max_candidates=12, store=None, learning=True):
         self.threshold = threshold
         self.short_threshold = short_threshold
         self.new_threshold = new_threshold
@@ -71,20 +95,27 @@ class SpeakerRegistry:
         self.candidate_threshold = candidate_threshold
         self.candidate_blocks = candidate_blocks
         self.max_candidates = max_candidates
-        self.speakers = []
+        self.store = store
+        self.learning = learning
+        self.speakers = store.load_speakers() if store is not None else []
         self.candidates = []
         self.block = 0
+
+    def _register(self, vector, seconds, observations=1):
+        vector = unit(vector)
+        speaker = (self.store.create(vector, observations, seconds) if self.store is not None
+                   else Speaker(f'speaker_{len(self.speakers) + 1}', vector, observations, seconds))
+        self.speakers.append(speaker)
+        return speaker.id
 
     def _discover(self, vector, seconds):
         if seconds < self.min_new_seconds:
             return None
         if not self.speakers:
-            speaker = Speaker('speaker_1', vector, seconds=seconds)
-            self.speakers.append(speaker)
-            return speaker.id
+            return self._register(vector, seconds)
         # A poor match is not evidence of a new person. Keep a wide uncertainty
         # band between recognition and discovery, including for short windows.
-        if max(float(vector @ s.vector) for s in self.speakers) >= self.new_threshold:
+        if max(s.similarity(vector) for s in self.speakers) >= self.new_threshold:
             return None
         available = [(float(vector @ c.vector), c) for c in self.candidates
                      if c.last_block != self.block]
@@ -98,15 +129,13 @@ class SpeakerRegistry:
             candidate.last_block = self.block
             # Recheck the aggregated reference; never promote a candidate that
             # now resembles an existing identity or a just-promoted candidate.
-            if max(float(candidate.vector @ s.vector) for s in self.speakers) >= self.new_threshold:
+            if max(s.similarity(candidate.vector) for s in self.speakers) >= self.new_threshold:
                 self.candidates.remove(candidate)
                 return None
             if candidate.observations >= 2 and candidate.seconds >= 2 * self.min_new_seconds:
-                speaker = Speaker(f'speaker_{len(self.speakers) + 1}', candidate.vector,
-                                  observations=candidate.observations, seconds=candidate.seconds)
-                self.speakers.append(speaker)
+                identity = self._register(candidate.vector, candidate.seconds, candidate.observations)
                 self.candidates.remove(candidate)
-                return speaker.id
+                return identity
         else:
             # Duplicate separator outputs in one block cannot count as two
             # sightings, nor occupy multiple slots for the same candidate.
@@ -123,7 +152,7 @@ class SpeakerRegistry:
         self.candidates = [c for c in self.candidates if self.block - c.first_block <= self.candidate_blocks]
         vectors = [unit(v) for v in vectors]
         known = list(self.speakers)
-        scores = np.array([[float(v @ s.vector) for s in known] for v in vectors])
+        scores = np.array([[s.similarity(v) for s in known] for v in vectors])
         options = []
         for i, row in enumerate(scores):
             allowed = [None]
@@ -148,8 +177,14 @@ class SpeakerRegistry:
         for i, choice in enumerate(best):
             if choice is not None:
                 speaker = known[choice]
-                speaker.observations += 1
-                speaker.seconds += durations[i]
+                competitors = [float(x) for j, x in enumerate(scores[i]) if j != choice]
+                competitors.extend(float(vectors[i] @ c.vector) for c in self.candidates)
+                learn = (self.learning and durations[i] >= 1.0 and scores[i, choice] >= 0.55
+                         and (not competitors or scores[i, choice] - max(competitors) >= 0.15))
+                if self.store is not None:
+                    self.store.record_match(speaker, vectors[i], durations[i], learn)
+                else:
+                    speaker.observe(vectors[i], durations[i], learn)
                 result.append(speaker.id)
                 continue
             result.append(self._discover(vectors[i], durations[i]))
@@ -157,7 +192,8 @@ class SpeakerRegistry:
 
     def snapshot(self):
         return [{"id": s.id, "ready": s.ready, "observations": s.observations,
-                 "seconds": round(s.seconds, 2)} for s in self.speakers]
+                 "seconds": round(s.seconds, 2), "saved": self.store is not None,
+                 "learned_observations": s.learned_observations} for s in self.speakers]
 
 
 @dataclass(frozen=True)

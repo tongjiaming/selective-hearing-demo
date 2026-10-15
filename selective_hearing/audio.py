@@ -68,11 +68,11 @@ def load_audio(path):
     return signal
 
 
-def process_file(path, backend, notify=lambda _: None, cancel=None, window_seconds=4):
+def process_file(path, backend, notify=lambda _: None, cancel=None, window_seconds=4, registry=None):
     audio = load_audio(path)
     if len(audio) > 16000 * 600:
         raise ValueError("首版单文件最多 10 分钟，请先截取测试片段")
-    processor = Processor(backend)
+    processor = Processor(backend, registry)
     tracks, metrics = {}, []
     size = int(window_seconds * 16000)
     for start in range(0, len(audio), size):
@@ -90,7 +90,7 @@ def process_file(path, backend, notify=lambda _: None, cancel=None, window_secon
     # Provisional identities can already be selected; confidence stays in the report.
     return AudioPacket(audio, tracks), {
         "sample_rate": 16000, "duration_seconds": len(audio) / 16000,
-        "window_seconds": window_seconds, "speakers": processor.registry.snapshot(),
+        "window_seconds": window_seconds, "speakers": [s for s in processor.registry.snapshot() if s['id'] in tracks],
         "chunks": metrics, "compute_seconds": sum(x["compute_seconds"] for x in metrics),
         "backend": "Conv-TasNet Libri2Mix + ECAPA-TDNN + Silero VAD",
         "note": "分块非因果处理。指标不包含蓝牙/设备延迟。未匹配的目标片段输出静音。",
@@ -148,11 +148,11 @@ class FilePlayer:
 
 class LiveSession:
     def __init__(self, input_device, output_device, control, notify, backend=None,
-                 window_seconds=LIVE_WINDOW_SECONDS):
+                 window_seconds=LIVE_WINDOW_SECONDS, registry=None):
         self.input_device, self.output_device = input_device, output_device
         self.control, self.notify = control, notify
         self.backend = backend
-        self.processor = Processor(backend) if backend else None
+        self.processor = Processor(backend, registry) if backend else None
         self.window = int(window_seconds * 16000)
         self.cancel = Event()
         # Capture chunks are 20 ms; max queue is one model window, no indefinite buildup.

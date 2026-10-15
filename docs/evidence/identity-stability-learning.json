@@ -1,0 +1,526 @@
+{
+  "baseline_ref": "21200ae",
+  "source": "SpeechBrain public ASR samples",
+  "method": "Same separated embeddings sent to old and new registries. Live windows are non-overlapping 1.5 s.",
+  "limitations": "Small synthetic English fixtures; not a user microphone recording. Unknown segments remain silent; no guarantee of real-room accuracy.",
+  "manifest": [
+    {
+      "file": "spk1_snt1.wav",
+      "sha256": "2f7315ccf543b6368528b098cd895098c154f222cd55ff7b5f66b50feb383c56"
+    },
+    {
+      "file": "spk1_snt2.wav",
+      "sha256": "e1f125a318f4026991bf78f5c41481be0fbcf9b3b2fd72284f9824cb851c3034"
+    },
+    {
+      "file": "spk1_snt3.wav",
+      "sha256": "dc85f251ecb6f89652e8e3add9f35a39e86cb64a48384c89255437fd0f1bbc69"
+    },
+    {
+      "file": "spk1_snt4.wav",
+      "sha256": "719e441a93a3ec220dfc4337c30944aa1774847739ae9d461c3280b612cf869d"
+    },
+    {
+      "file": "spk1_snt5.wav",
+      "sha256": "6972d80554dfb14e5ad23c7b355a870e9beb18ab2331fbd4b12ff1777e6ed277"
+    },
+    {
+      "file": "spk1_snt6.wav",
+      "sha256": "8811bcbdb867c887cdb036aadd97fa2a8023e90610b314c9913f79f712eb7b6c"
+    },
+    {
+      "file": "spk2_snt1.wav",
+      "sha256": "5f3f534ba99f159358c6ee2e4fb5e42b3b9399f37f4e290651405c76095f26f0"
+    },
+    {
+      "file": "spk2_snt2.wav",
+      "sha256": "589bcda06796c124544138d7ff40562c146be5e06c1765f2fb4d27c22d19ea8a"
+    },
+    {
+      "file": "spk2_snt3.wav",
+      "sha256": "3831efa2081105f8c820312e83f605a320581761c75c52e06f908a12a5da8472"
+    },
+    {
+      "file": "spk2_snt4.wav",
+      "sha256": "6dfc7295435a97f2b50c5e95e895fe223b56c61d64a4e0bcb3a663e45f893f4f"
+    },
+    {
+      "file": "spk2_snt5.wav",
+      "sha256": "cf312453d454a3e006ac84ef84bd5880452b57e1a8d717f7e37dae65ceec8044"
+    },
+    {
+      "file": "spk2_snt6.wav",
+      "sha256": "cdec920cdcbbb0b38110b958f6e90a4726c87be8d9d3f9d3a0834a1cc950cf6d"
+    }
+  ],
+  "cases": {
+    "single_live": {
+      "expected_people": 1,
+      "before_people": 2,
+      "after_people": 1,
+      "window_seconds": 1.5,
+      "duration_seconds": 17.06,
+      "input_sha256": "7e5dd9bff1d12dddd2287aa9d12c80bd4f4f3e237d36cedb583b05f189af38b0",
+      "eligible_tracks": 13,
+      "before_matched_tracks": 6,
+      "after_matched_tracks": 11,
+      "before_assignments": [
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null,
+          null
+        ],
+        []
+      ],
+      "after_assignments": [
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null,
+          "speaker_1"
+        ],
+        []
+      ],
+      "global_identity_si_sdr_db": [
+        7.402
+      ]
+    },
+    "overlap_live": {
+      "expected_people": 2,
+      "before_people": 4,
+      "after_people": 2,
+      "window_seconds": 1.5,
+      "duration_seconds": 17.06,
+      "input_sha256": "d9563899f410f060f37fa372962b22984acff9c5197bc4867518886d53227814",
+      "eligible_tracks": 20,
+      "before_matched_tracks": 6,
+      "after_matched_tracks": 9,
+      "before_assignments": [
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          "speaker_3"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null,
+          "speaker_4"
+        ],
+        []
+      ],
+      "after_assignments": [
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        []
+      ],
+      "global_identity_si_sdr_db": [
+        0.469,
+        -6.649
+      ]
+    },
+    "arrival_live": {
+      "expected_people": 2,
+      "before_people": 4,
+      "after_people": 2,
+      "window_seconds": 1.5,
+      "duration_seconds": 21.06,
+      "input_sha256": "03ff7b2d9e0b61c904c6faddf4509ef582dd9e6a5b018b21ef2c839d11eaa876",
+      "eligible_tracks": 19,
+      "before_matched_tracks": 8,
+      "after_matched_tracks": 14,
+      "before_assignments": [
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_2"
+        ],
+        [
+          "speaker_2"
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_3",
+          null
+        ],
+        [
+          "speaker_4",
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        []
+      ],
+      "after_assignments": [
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_2"
+        ],
+        [
+          "speaker_2"
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ],
+        []
+      ],
+      "global_identity_si_sdr_db": [
+        2.436,
+        2.004
+      ]
+    },
+    "quiet_noisy_overlap_live": {
+      "expected_people": 2,
+      "before_people": 6,
+      "after_people": 2,
+      "window_seconds": 1.5,
+      "duration_seconds": 17.06,
+      "input_sha256": "5c198c979278f819c77bd17968a790eb5cd0284faf45814790b63e1636de5173",
+      "eligible_tracks": 19,
+      "before_matched_tracks": 8,
+      "after_matched_tracks": 10,
+      "before_assignments": [
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_3",
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          "speaker_4",
+          "speaker_5"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_6"
+        ],
+        []
+      ],
+      "after_assignments": [
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          null,
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          null
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ],
+        []
+      ],
+      "global_identity_si_sdr_db": [
+        -0.201,
+        -2.322
+      ]
+    },
+    "overlap_file": {
+      "expected_people": 2,
+      "before_people": 2,
+      "after_people": 2,
+      "window_seconds": 4,
+      "duration_seconds": 17.06,
+      "input_sha256": "d9563899f410f060f37fa372962b22984acff9c5197bc4867518886d53227814",
+      "eligible_tracks": 8,
+      "before_matched_tracks": 7,
+      "after_matched_tracks": 7,
+      "before_assignments": [
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          null
+        ]
+      ],
+      "after_assignments": [
+        [
+          "speaker_1",
+          null
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1",
+          "speaker_2"
+        ],
+        [
+          "speaker_1"
+        ],
+        [
+          "speaker_1"
+        ]
+      ],
+      "global_identity_si_sdr_db": [
+        13.141,
+        1.581
+      ]
+    }
+  }
+}

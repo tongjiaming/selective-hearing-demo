@@ -90,9 +90,9 @@ class ModelBackend:
 
 
 class Processor:
-    def __init__(self, backend):
+    def __init__(self, backend, registry=None):
         self.backend = backend
-        self.registry = SpeakerRegistry()
+        self.registry = registry if registry is not None else SpeakerRegistry()
 
     def process(self, audio16, captured_at=0.0):
         begin = time.perf_counter()

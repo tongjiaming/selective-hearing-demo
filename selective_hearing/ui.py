@@ -4,7 +4,8 @@ from threading import Thread, Event
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .core import OutputControl
+from .core import OutputControl, SpeakerRegistry
+from .profiles import ProfileStore, default_profile_path
 from .audio import devices, LiveSession, LIVE_WINDOW_SECONDS
 from .models import ModelBackend
 
@@ -33,11 +34,23 @@ class App:
         self.speaker_labels = {}
         self.speaker_mutes = {}
         self.speaker_names = {}
+        self.saved_ids = set()
+        self.profile_store = None
+        self.profile_error = None
+        try:
+            self.profile_store = ProfileStore(default_profile_path(file_mode))
+        except Exception as exc:
+            self.profile_error = str(exc)
+            self.auto_start_pending = False
         self.source_devices = []
         self.manual_devices = {}
         self.alive = True
         self.generation = 0
         self._build()
+        if self.profile_error:
+            self.profile_note.config(text=f'人物资料加载失败：{self.profile_error}；原文件未覆盖。')
+        else:
+            self.restore_people()
         self.refresh_devices()
         self.poll_after = self.root.after(100, self.poll)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -120,6 +133,9 @@ class App:
         self.track_canvas.bind('<Configure>', lambda e: self.track_canvas.itemconfigure(grid_window, width=e.width))
         self.people_note = ttk.Label(people, text="可陆续识别多个人；当前模型同时最多分离两路人声，背景音暂不能独立分离。", foreground="#67758a", wraplength=910)
         self.people_note.pack(anchor="w", pady=8)
+        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；可靠语音持续学习。删除资料请先停止。',
+                                      foreground='#536378', wraplength=900)
+        self.profile_note.pack(anchor='w', pady=(0, 4))
         self.mode_label = ttk.Label(people, text="当前：全部原声", font=("Microsoft YaHei UI", 11, "bold"))
         self.mode_label.pack(anchor="w")
         gain_row = ttk.Frame(people)
@@ -201,7 +217,9 @@ class App:
                 self.events.put({"type": "load_error", "message": str(exc)})
         Thread(target=work, daemon=True).start()
 
-    def reset_people(self):
+    def reset_people(self, reset_selection=True):
+        if not self.save_names():
+            raise ValueError('名字保存失败，请检查人物资料提示后重试。')
         for card in self.speaker_cards.values():
             card.destroy()
         self.speaker_buttons.clear()
@@ -209,10 +227,42 @@ class App:
         self.speaker_labels.clear()
         self.speaker_mutes.clear()
         self.speaker_names.clear()
+        self.saved_ids.clear()
         self.track_area.pack_forget()
-        # A new source is a new identity session; a prior target must not carry over.
-        self.choose("all")
+        # Listening choices reset, but identities and names come from local storage.
+        if reset_selection:
+            self.choose("all")
         self.people_note.config(text="等待人声。首位人物首次识别即可选择，后续新人需跨片段确认。")
+        self.restore_people()
+
+    def restore_people(self):
+        if self.profile_store is not None:
+            self.update_people(self.profile_store.summaries())
+
+    def save_names(self):
+        success = True
+        for identity in list(self.speaker_names):
+            success = self.commit_name(identity) and success
+        return success
+
+    def delete_person(self, identity):
+        if self.session is not None or self.player is not None or self.file_busy:
+            self.profile_note.config(text='请先停止收音、播放或文件处理，再删除人物资料。')
+            return
+        name = self.speaker_names[identity].get()
+        if not messagebox.askyesno('删除人物资料', f'删除“{name}”的名字和已学习声纹？再次听到此人时会重新识别。'):
+            return
+        try:
+            self.profile_store.delete(identity)
+            self.saved_ids.discard(identity)
+            self.file_packet = self.file_report = None
+            if self.file_mode:
+                self.play_button.config(state='disabled')
+                self.export_button.config(state='disabled')
+            self.reset_people()
+            self.profile_note.config(text=f'已删除“{name}”的本机资料。')
+        except Exception as exc:
+            self.profile_note.config(text=f'删除未完成：{exc}')
 
     def choose(self, mode):
         self.control.set(mode=mode)
@@ -239,13 +289,15 @@ class App:
     def update_people(self, speakers, active=()):
         for speaker in speakers:
             identity = speaker["id"]
+            if speaker.get('saved'):
+                self.saved_ids.add(identity)
             if identity not in self.speaker_buttons:
                 self.track_area.pack(fill='x', before=self.people_note, pady=(8, 0))
                 card = ttk.Frame(self.track_grid)
                 position = len(self.speaker_cards)
                 card.grid(row=position // 2, column=position % 2, sticky='w', padx=(0, 12), pady=4)
                 label = ttk.Label(card)
-                self.speaker_names[identity] = tk.StringVar(value=f"说话人 {identity.split('_')[-1]}")
+                self.speaker_names[identity] = tk.StringVar(value=speaker.get('name', f"说话人 {identity.split('_')[-1]}"))
                 name_box = ttk.Entry(card, textvariable=self.speaker_names[identity], width=22)
                 name_box.pack(anchor='w')
                 name_box.bind('<FocusOut>', lambda _, key=identity: self.commit_name(key))
@@ -257,6 +309,8 @@ class App:
                 button.pack(side='left', padx=(0, 4))
                 mute = ttk.Button(row, text='不听他', command=lambda key=identity: self.set_person(key, False))
                 mute.pack(side='left')
+                if speaker.get('saved'):
+                    ttk.Button(row, text='删除资料', command=lambda key=identity: self.delete_person(key)).pack(side='left', padx=4)
                 self.speaker_buttons[identity] = button
                 self.speaker_cards[identity] = card
                 self.speaker_labels[identity] = label
@@ -265,6 +319,8 @@ class App:
             text += " · 有声音" if identity in active else ""
             if not speaker["ready"]:
                 text += " · 确认中"
+            if speaker.get('saved'):
+                text += f" · 已保存 · 已学习 {speaker.get('learned_observations', 0)} 段"
             self.speaker_labels[identity].config(text=text)
         if speakers:
             self.people_note.config(text="名字可直接编辑，回车保存。新人需跨片段确认，避免重复建人；同时最多分离两路人声。")
@@ -275,14 +331,23 @@ class App:
 
     def commit_name(self, identity):
         if identity not in self.speaker_names:
-            return
+            return True
         value = ' '.join(self.speaker_names[identity].get().split())[:40]
         self.speaker_names[identity].set(value or f"说话人 {identity.split('_')[-1]}")
+        if identity in self.saved_ids:
+            try:
+                self.profile_store.rename(identity, self.speaker_names[identity].get())
+            except Exception as exc:
+                self.profile_note.config(text=f'名字未保存：{exc}')
+                return False
+        return True
 
     def start_live(self, automatic=False):
         if self.file_mode or not self.alive:
             return
         try:
+            if self.profile_error:
+                raise ValueError('人物资料无法加载：' + self.profile_error)
             if self.file_busy:
                 raise ValueError("请等待文件处理结束，或先停止")
             if self.ai.get() and not self.backend:
@@ -295,10 +360,12 @@ class App:
             if self.session is not None:
                 raise ValueError("上一轮推理正在结束，请稍后开始")
             self.file_packet = self.file_report = None
-            self.reset_people()
+            self.reset_people(reset_selection=not automatic)
             generation = self.generation
             notify = lambda event: self.events.put({**event, "generation": generation})
-            session = LiveSession(input_id, output_id, self.control, notify, self.backend if self.ai.get() else None)
+            registry = SpeakerRegistry(store=self.profile_store) if self.ai.get() else None
+            session = LiveSession(input_id, output_id, self.control, notify, self.backend if self.ai.get() else None,
+                                  registry=registry)
             session.start()
             self.session = session
             self.start_button.config(state="disabled")
@@ -384,8 +451,10 @@ class App:
             self.poll_after = self.root.after(100, self.poll)
 
     def close(self):
-        self.alive = False
         self.stop()
+        if not self.save_names():
+            return
+        self.alive = False
         if self.poll_after is not None:
             self.root.after_cancel(self.poll_after)
         self.root.destroy()

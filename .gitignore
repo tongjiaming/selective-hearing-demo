@@ -12,6 +12,8 @@ Thumbs.db
 # Audio / biometric samples / third-party model assets stay local
 recordings/
 enrollment/
+profiles/
+*-speakers.sqlite3*
 checkpoints/
 weights/
 models/

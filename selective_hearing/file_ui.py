@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 from .ui import App
+from .core import SpeakerRegistry
 from .audio import FilePlayer, process_file, export_result
 
 
@@ -30,6 +31,9 @@ class FileApp(App):
         self.progress.pack(fill='x', pady=(10, 0))
 
     def import_file(self):
+        if self.profile_error:
+            self.status.config(text='人物资料无法加载：' + self.profile_error)
+            return
         if not self.backend:
             messagebox.showinfo('需要模型', '请等待模型加载完成。')
             return
@@ -39,7 +43,11 @@ class FileApp(App):
         if not path:
             return
         self.stop()
-        self.reset_people()
+        try:
+            self.reset_people()
+        except Exception as exc:
+            self.status.config(text=str(exc))
+            return
         self.file_busy = True
         self.file_cancel = Event()
         self.file_packet = self.file_report = None
@@ -53,7 +61,8 @@ class FileApp(App):
         def work():
             try:
                 notify = lambda e: self.events.put({**e, 'generation': generation})
-                packet, report = process_file(path, self.backend, notify, cancel)
+                packet, report = process_file(path, self.backend, notify, cancel,
+                                              registry=SpeakerRegistry(store=self.profile_store))
                 self.events.put({'type': 'file_done', 'packet': packet, 'report': report, 'generation': generation})
             except Exception as exc:
                 self.events.put({'type': 'file_error', 'message': str(exc), 'generation': generation})
@@ -75,9 +84,10 @@ class FileApp(App):
             messagebox.showerror('播放失败', str(exc))
 
     def named_report(self):
-        for identity in self.speaker_names:
-            self.commit_name(identity)
-        names = {identity: value.get() for identity, value in self.speaker_names.items()}
+        if not self.save_names():
+            raise ValueError('名字未能保存，请检查人物资料提示。')
+        included = {speaker['id'] for speaker in self.file_report['speakers']}
+        names = {identity: value.get() for identity, value in self.speaker_names.items() if identity in included}
         return {**self.file_report, 'display_names': names,
                 'speakers': [{**speaker, 'name': names.get(speaker['id'], speaker['id'])}
                              for speaker in self.file_report['speakers']]}
