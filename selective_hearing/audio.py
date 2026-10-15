@@ -63,7 +63,7 @@ def process_file(path, backend, notify=lambda _: None, cancel=None, window_secon
         "window_seconds": window_seconds, "speakers": [s for s in processor.registry.snapshot() if s['id'] in tracks],
         "chunks": metrics, "compute_seconds": sum(x["compute_seconds"] for x in metrics),
         "backend": "Conv-TasNet Libri2Mix + ECAPA-TDNN + Silero VAD",
-        "note": "分块非因果处理。指标不包含蓝牙/设备延迟。未匹配的目标片段输出静音。",
+        "note": "分块非因果处理。指标不包含蓝牙/设备延迟。人物音轨中未匹配片段为静音；试听是否保留未分类声音由独立开关控制。",
     }
 
 

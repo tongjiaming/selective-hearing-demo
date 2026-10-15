@@ -298,6 +298,9 @@ class SpeakerRegistry:
                 for s in self.speakers]
 
 
+UNCLASSIFIED_ID = '__unclassified__'
+
+
 @dataclass(frozen=True)
 class TrackSelection:
     """Immutable snapshot read by the audio callback, with independent overrides."""
@@ -327,10 +330,15 @@ class AudioPacket:
     def slice(self, mode, start, end):
         """Read only the callback-sized region, including for mute/missing IDs."""
         if isinstance(mode, TrackSelection):
-            result = np.zeros(end - start, np.float32)
+            include_unclassified = mode.enabled(UNCLASSIFIED_ID)
+            result = self.original[start:end].copy() if include_unclassified else np.zeros(end - start, np.float32)
             for identity, track in self.tracks.items():
-                if mode.enabled(identity):
+                if include_unclassified and not mode.enabled(identity):
+                    result -= track[start:end]
+                elif not include_unclassified and mode.enabled(identity):
                     result += track[start:end]
+            # The remainder includes unrecognized speech and separation errors,
+            # not a clean background stem. All-on is the exact original signal.
             return result
         if mode.startswith('exclude:'):
             excluded = mode.split(':', 1)[1]

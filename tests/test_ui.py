@@ -216,14 +216,15 @@ def test_listen_button_restores_audio_and_label_after_last_exclusion(monkeypatch
     try:
         app.update_people([{'id': 'speaker_1', 'ready': True}])
         session = LiveSession(0, 1, app.control, lambda _: None)
-        session.playback.put(AudioPacket(np.full(960, .2, np.float32)))
+        session.playback.put(AudioPacket(np.full(960, .2, np.float32),
+                                        {'speaker_1': np.full(960, .1, np.float32)}))
         output = np.empty((320, 1), np.float32)
         status = SimpleNamespace(output_underflow=False)
         session._output(output, 320, None, status)
         np.testing.assert_allclose(output, .08)
         app.speaker_mutes['speaker_1'].invoke()
         session._output(output, 320, None, status)
-        np.testing.assert_array_equal(output, 0)
+        np.testing.assert_allclose(output, .04)  # unclassified sound is still on
         app.speaker_buttons['speaker_1'].invoke()
         # A subsequent model update must not put playback back in filtering mode.
         app.update_people([{'id': 'speaker_1', 'ready': True}], [])
@@ -259,6 +260,34 @@ def test_multiple_people_have_independent_controls_and_scrollable_cards(monkeypa
         assert app.speaker_buttons['speaker_2']['style'] == 'Selected.TButton'
         app.reset_people()
         assert not app.track_area.winfo_manager()
+    finally:
+        app.close()
+
+
+@pytest.mark.parametrize('file_mode', [False, True])
+def test_unclassified_buttons_are_independent_of_people_and_follow_global_controls(monkeypatch, root, file_mode):
+    from selective_hearing.core import UNCLASSIFIED_ID
+    startup_fixture(monkeypatch)
+    app = FileApp(root) if file_mode else App(root, auto_start=False)
+    try:
+        app.update_people([{'id': 'speaker_1', 'ready': True}, {'id': 'speaker_2', 'ready': True}])
+        app.speaker_mutes['speaker_1'].invoke()
+        app.speaker_mutes['speaker_2'].invoke()
+        assert app.control.track_enabled(UNCLASSIFIED_ID)
+        assert '听 0 人' in app.mode_label['text'] and '未分类：听' in app.mode_label['text']
+        app.unclassified_mute.invoke()
+        assert not app.control.track_enabled(UNCLASSIFIED_ID)
+        app.unclassified_listen.invoke()
+        assert not app.control.track_enabled('speaker_1') and not app.control.track_enabled('speaker_2')
+        assert app.unclassified_listen['style'] == 'Selected.TButton'
+        app.choose('mute')
+        assert app.unclassified_mute['style'] == 'Selected.TButton'
+        app.unclassified_listen.invoke()
+        assert not app.control.track_enabled('speaker_3')
+        assert UNCLASSIFIED_ID not in app.speaker_names
+        assert not app.profile_store.summaries()
+        app.choose('all')
+        assert app.control.track_enabled(UNCLASSIFIED_ID) and app.control.track_enabled('speaker_1')
     finally:
         app.close()
 

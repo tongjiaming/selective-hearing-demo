@@ -171,7 +171,8 @@ def test_callback_resumes_original_at_current_position_after_unmute(kind):
     np.testing.assert_allclose(data[:, 0], original[:320] * .5)
     control.set_track('speaker_1', False)
     callback(data, 320, None, status)
-    np.testing.assert_array_equal(data, 0)
+    # Unclassified is independently enabled; no identified track to subtract.
+    np.testing.assert_allclose(data[:, 0], original[320:640] * .5)
     control.set_track('speaker_1', True)
     callback(data, 320, None, status)
     np.testing.assert_allclose(data[:, 0], original[640:960] * .5)

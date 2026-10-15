@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer, OutputControl, SpeakingActivity, resample, unit
+from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer, OutputControl, SpeakingActivity, resample, unit, UNCLASSIFIED_ID
 
 
 def test_output_permutation_does_not_swap_identity():
@@ -119,12 +119,12 @@ def test_independent_tracks_keep_other_choices_and_missing_tracks_silent():
         'speaker_2': np.full(5, .2, np.float32),
         'speaker_3': np.full(5, .3, np.float32)})
     control.set_track('speaker_1', False)
-    np.testing.assert_allclose(packet.select(control.get()[0]), .5)
+    np.testing.assert_allclose(packet.select(control.get()[0]), .8)
     snapshot = control.get()[0]
     control.set_track('speaker_2', False)
     control.set_track('speaker_1', True)
-    np.testing.assert_allclose(packet.select(control.get()[0]), .4)  # listening to A keeps B muted
-    np.testing.assert_allclose(packet.select(snapshot), .5)  # callback snapshot is immutable
+    np.testing.assert_allclose(packet.select(control.get()[0]), .7)  # A and the remainder stay on; B stays muted
+    np.testing.assert_allclose(packet.select(snapshot), .8)  # callback snapshot is immutable
     control.set(mode='mute')
     control.set_track('speaker_1', True)
     assert not control.track_enabled('speaker_4')
@@ -146,7 +146,7 @@ def test_undo_last_exclusion_restores_original_even_when_identity_is_missing(has
     np.testing.assert_array_equal(packet.select(control.get()[0]), original)
     for _ in range(3):
         control.set_track('speaker_1', False)
-        np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+        np.testing.assert_allclose(packet.select(control.get()[0]), original * (.5 if has_track else 1))
         control.set_track('speaker_1', True)
         np.testing.assert_array_equal(packet.select(control.get()[0]), original)
 
@@ -158,7 +158,7 @@ def test_unmuting_one_person_keeps_remaining_exclusions_and_global_mute_policy()
     control.set_track('speaker_2', False)
     control.set_track('speaker_1', True)
     assert not control.track_enabled('speaker_2')
-    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+    np.testing.assert_array_equal(packet.select(control.get()[0]), packet.original)
     control.set_track('speaker_2', True)
     np.testing.assert_array_equal(packet.select(control.get()[0]), packet.original)
     control.set(mode='mute')
@@ -169,6 +169,42 @@ def test_unmuting_one_person_keeps_remaining_exclusions_and_global_mute_policy()
     np.testing.assert_allclose(packet.select(control.get()[0]), .1)
     control.set_track('speaker_1', False)
     np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+
+
+@pytest.mark.parametrize('mask', range(16))
+def test_people_and_unclassified_are_four_independent_tracks(mask):
+    rng = np.random.default_rng(45)
+    a, b, c, unclassified = rng.normal(0, .03, (4, 32)).astype(np.float32)
+    parts = [a, b, c, unclassified]
+    ids = ['speaker_1', 'speaker_2', 'speaker_3', UNCLASSIFIED_ID]
+    original = sum(parts)
+    packet = AudioPacket(original, dict(zip(ids[:3], parts[:3])))
+    original_copy = original.copy()
+    control = OutputControl()
+    for index, identity in enumerate(ids):
+        control.set_track(identity, bool(mask & (1 << index)))
+    expected = sum((track for index, track in enumerate(parts) if mask & (1 << index)), np.zeros(32, np.float32))
+    np.testing.assert_allclose(packet.slice(control.get()[0], 5, 17), expected[5:17], atol=2e-8)
+    np.testing.assert_array_equal(packet.original, original_copy)
+    assert packet.active(5, 17) == set(ids[:3])  # no fake speaker/activity for background
+
+
+def test_all_people_off_keeps_unknown_until_its_own_switch_or_global_mute():
+    control = OutputControl()
+    packet = AudioPacket(np.full(10, .5, np.float32), {'speaker_1': np.full(10, .2, np.float32)})
+    control.set_track('speaker_1', False)
+    np.testing.assert_allclose(packet.select(control.get()[0]), .3)
+    control.set_track(UNCLASSIFIED_ID, False)
+    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+    control.set_track(UNCLASSIFIED_ID, True)
+    np.testing.assert_allclose(packet.select(control.get()[0]), .3)
+    assert not control.track_enabled('speaker_1')
+    control.set(mode='mute')
+    assert not control.track_enabled(UNCLASSIFIED_ID)
+    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+    control.set_track(UNCLASSIFIED_ID, True)
+    assert not control.track_enabled('speaker_1') and not control.track_enabled('speaker_2')
+    np.testing.assert_allclose(packet.select(control.get()[0]), .3)
 
 
 def test_two_simultaneous_tracks_cannot_share_identity():

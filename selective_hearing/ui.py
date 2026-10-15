@@ -4,7 +4,7 @@ from threading import Thread, Event
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .core import OutputControl, SpeakerRegistry
+from .core import OutputControl, SpeakerRegistry, UNCLASSIFIED_ID
 from .profiles import ProfileStore, default_profile_path, validate_window_seconds
 from .audio import devices, LiveSession, LIVE_WINDOW_SECONDS
 from .models import ModelBackend
@@ -156,6 +156,17 @@ class App:
         self.people_row.pack(fill="x")
         ttk.Button(self.people_row, text="全部听（原声）", command=lambda: self.choose("all")).pack(side="left", padx=(0, 8))
         ttk.Button(self.people_row, text="全部静音", command=lambda: self.choose("mute")).pack(side="left", padx=(0, 8))
+        unclassified_row = ttk.Frame(people)
+        unclassified_row.pack(fill='x', pady=(8, 0))
+        ttk.Label(unclassified_row, text='未分类（含背景音）').pack(side='left', padx=(0, 12))
+        self.unclassified_listen = ttk.Button(unclassified_row, text='听',
+                                             command=lambda: self.set_person(UNCLASSIFIED_ID, True))
+        self.unclassified_listen.pack(side='left', padx=(0, 4))
+        self.unclassified_mute = ttk.Button(unclassified_row, text='不听',
+                                           command=lambda: self.set_person(UNCLASSIFIED_ID, False))
+        self.unclassified_mute.pack(side='left')
+        ttk.Label(people, text='未分类含环境声、未认出的人声和分离残留；开启时，未识别出的被屏蔽人物也可能被听到。',
+                  foreground='#67758a', wraplength=910).pack(anchor='w', pady=(4, 0))
         self.track_area = ttk.Frame(people)
         self.track_canvas = tk.Canvas(self.track_area, height=156, highlightthickness=0, bg='#eef2f6')
         scrollbar = ttk.Scrollbar(self.track_area, orient='vertical', command=self.track_canvas.yview)
@@ -167,7 +178,7 @@ class App:
         self.track_grid.columnconfigure((0, 1), weight=1)
         self.track_grid.bind('<Configure>', lambda _: self.track_canvas.configure(scrollregion=self.track_canvas.bbox('all')))
         self.track_canvas.bind('<Configure>', lambda e: self.track_canvas.itemconfigure(grid_window, width=e.width))
-        self.people_note = ttk.Label(people, text="可陆续识别多个人；当前模型同时最多分离两路人声，背景音暂不能独立分离。", foreground="#67758a", wraplength=910)
+        self.people_note = ttk.Label(people, text="人物开关与未分类开关独立；当前模型同时最多分离两路人声。", foreground="#67758a", wraplength=910)
         self.people_note.pack(anchor="w", pady=8)
         self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；样本指已归类的逐段声纹；追加学习指模板更新，待定样本可随后改归类。删除资料时会自动停止音频。',
                                       foreground='#536378', wraplength=900)
@@ -414,6 +425,9 @@ class App:
 
     def refresh_track_controls(self):
         mode, _ = self.control.get()
+        unclassified = self.control.track_enabled(UNCLASSIFIED_ID)
+        self.unclassified_listen.configure(style='Selected.TButton' if unclassified else 'TButton')
+        self.unclassified_mute.configure(style='TButton' if unclassified else 'Selected.TButton')
         for identity in self.speaker_buttons:
             enabled = self.control.track_enabled(identity)
             self.speaker_buttons[identity].configure(style='Selected.TButton' if enabled else 'TButton')
@@ -423,6 +437,7 @@ class App:
         else:
             count = sum(mode.enabled(identity) for identity in self.speaker_buttons)
             label = f'听 {count} 人 · 不听 {len(self.speaker_buttons) - count} 人'
+            label += ' · 未分类：听' if unclassified else ' · 未分类：不听'
             label += ' · 新人默认听' if mode.default_enabled else ' · 新人默认不听'
         self.mode_label.config(text='当前：' + label)
 
