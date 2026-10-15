@@ -5,3 +5,4 @@ torchaudio==2.5.1
 speechbrain==1.0.3
 huggingface-hub==0.28.1
 silero-vad==5.1.2
+onnxruntime==1.31.0

@@ -63,6 +63,8 @@ class ProfileStore:
             db.execute('CREATE TABLE IF NOT EXISTS voice_samples ('
                        'id INTEGER PRIMARY KEY AUTOINCREMENT, vector BLOB NOT NULL, seconds REAL NOT NULL, '
                        'speaker_id INTEGER REFERENCES speakers(id) ON DELETE CASCADE, batch_id INTEGER NOT NULL DEFAULT 0)')
+            if 'reference_eligible' not in {row[1] for row in db.execute('PRAGMA table_info(voice_samples)')}:
+                db.execute('ALTER TABLE voice_samples ADD COLUMN reference_eligible INTEGER NOT NULL DEFAULT 1')
             db.execute('CREATE TABLE IF NOT EXISTS speaker_aliases ('
                        'source INTEGER PRIMARY KEY, target INTEGER NOT NULL REFERENCES speakers(id) ON DELETE CASCADE)')
             db.execute('CREATE TABLE IF NOT EXISTS speaker_conflicts ('
@@ -145,17 +147,17 @@ class ProfileStore:
 
     def load_samples(self):
         with self.connection() as db:
-            rows = db.execute('SELECT id, vector, seconds, speaker_id, batch_id FROM voice_samples ORDER BY id DESC LIMIT ?',
+            rows = db.execute('SELECT id, vector, seconds, speaker_id, batch_id, reference_eligible FROM voice_samples ORDER BY id DESC LIMIT ?',
                               (MAX_SAMPLES,)).fetchall()
         result = []
-        for number, blob, seconds, speaker, batch_id in reversed(rows):
+        for number, blob, seconds, speaker, batch_id, eligible in reversed(rows):
             if number < 1 or not math.isfinite(seconds) or seconds < MIN_SPEECH_SECONDS:
                 raise ValueError('人声样本资料异常，未覆盖原资料。')
             result.append(VoiceSample(number, self.vector(np.frombuffer(blob, dtype='<f4')),
-                                     seconds, f'speaker_{speaker}' if speaker is not None else None, batch_id))
+                                     seconds, f'speaker_{speaker}' if speaker is not None else None, batch_id, bool(eligible)))
         return result
 
-    def add_samples(self, entries):
+    def add_samples(self, entries, *, reference_eligible=True):
         rows = [(self.vector(v).astype('<f4').tobytes(), seconds,
                  self.number(identity) if identity is not None else None) for v, seconds, identity in entries]
         if any(not math.isfinite(r[1]) or r[1] < MIN_SPEECH_SECONDS for r in rows):
@@ -164,8 +166,8 @@ class ProfileStore:
             db.execute('BEGIN IMMEDIATE')
             self.check_revision(db)
             batch_id = db.execute('SELECT COALESCE(MAX(batch_id), 0) + 1 FROM voice_samples').fetchone()[0]
-            db.executemany('INSERT INTO voice_samples (vector, seconds, speaker_id, batch_id) VALUES (?, ?, ?, ?)',
-                           [(*row, batch_id) for row in rows])
+            db.executemany('INSERT INTO voice_samples (vector, seconds, speaker_id, batch_id, reference_eligible) VALUES (?, ?, ?, ?, ?)',
+                           [(*row, batch_id, int(reference_eligible)) for row in rows])
 
     def correct_samples(self, changes):
         with self.connection() as db:

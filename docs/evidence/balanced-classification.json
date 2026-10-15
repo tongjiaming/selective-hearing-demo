@@ -1,0 +1,2192 @@
+{
+  "baseline_ref": "edbf656",
+  "public_source_commit": "9ef9a3478a9fbc9cc31e365cc403180132fac3ac",
+  "labels": "Evaluation-only maximum squared waveform correlation >= .25 and lead >= .10; ambiguous outputs excluded from classification scoring, but included in profile counts.",
+  "limitations": "Small synthetic English fixtures. First five informed clustering thresholds; LJ failures motivated past-only context, so LJ is a development regression, not a final blind accuracy test. Before uses independent windows; after uses past-only context, so eligible/scored track counts differ. Repeated trials reuse identical features, not independent speech. No real microphone/Chinese/room-acoustic accuracy claim.",
+  "sources": [
+    {
+      "file": "spk1_snt1.wav",
+      "sha256": "2f7315ccf543b6368528b098cd895098c154f222cd55ff7b5f66b50feb383c56"
+    },
+    {
+      "file": "spk1_snt2.wav",
+      "sha256": "e1f125a318f4026991bf78f5c41481be0fbcf9b3b2fd72284f9824cb851c3034"
+    },
+    {
+      "file": "spk1_snt3.wav",
+      "sha256": "dc85f251ecb6f89652e8e3add9f35a39e86cb64a48384c89255437fd0f1bbc69"
+    },
+    {
+      "file": "spk1_snt4.wav",
+      "sha256": "719e441a93a3ec220dfc4337c30944aa1774847739ae9d461c3280b612cf869d"
+    },
+    {
+      "file": "spk1_snt5.wav",
+      "sha256": "6972d80554dfb14e5ad23c7b355a870e9beb18ab2331fbd4b12ff1777e6ed277"
+    },
+    {
+      "file": "spk1_snt6.wav",
+      "sha256": "8811bcbdb867c887cdb036aadd97fa2a8023e90610b314c9913f79f712eb7b6c"
+    },
+    {
+      "file": "spk2_snt1.wav",
+      "sha256": "5f3f534ba99f159358c6ee2e4fb5e42b3b9399f37f4e290651405c76095f26f0"
+    },
+    {
+      "file": "spk2_snt2.wav",
+      "sha256": "589bcda06796c124544138d7ff40562c146be5e06c1765f2fb4d27c22d19ea8a"
+    },
+    {
+      "file": "spk2_snt3.wav",
+      "sha256": "3831efa2081105f8c820312e83f605a320581761c75c52e06f908a12a5da8472"
+    },
+    {
+      "file": "spk2_snt4.wav",
+      "sha256": "6dfc7295435a97f2b50c5e95e895fe223b56c61d64a4e0bcb3a663e45f893f4f"
+    },
+    {
+      "file": "spk2_snt5.wav",
+      "sha256": "cf312453d454a3e006ac84ef84bd5880452b57e1a8d717f7e37dae65ceec8044"
+    },
+    {
+      "file": "spk2_snt6.wav",
+      "sha256": "cdec920cdcbbb0b38110b958f6e90a4726c87be8d9d3f9d3a0834a1cc950cf6d"
+    },
+    {
+      "file": "LJ050-0131.wav",
+      "sha256": "a8cee9267ac78b62b85a46f6b6e1b0a2e299749179abacbab39bc04790206cfb"
+    }
+  ],
+  "cases": {
+    "single": {
+      "expected_people": 1,
+      "window_seconds": 1.5,
+      "seconds": 17.06,
+      "sha256": "7e5dd9bff1d12dddd2287aa9d12c80bd4f4f3e237d36cedb583b05f189af38b0",
+      "before": {
+        "people": 5,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_2",
+            "speaker_3"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_4",
+            "speaker_1"
+          ],
+          [
+            "speaker_5"
+          ]
+        ],
+        "scored_tracks": 15,
+        "correctly_assigned_tracks": 10,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 59,
+        "same_speaker_pairs": 105,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "classification_only": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            null
+          ]
+        ],
+        "scored_tracks": 15,
+        "correctly_assigned_tracks": 13,
+        "unassigned_tracks": 2,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 78,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "after": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 13,
+        "correctly_assigned_tracks": 13,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 2,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 78,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "reversed_outputs": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 13,
+        "correctly_assigned_tracks": 13,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 2,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 78,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "repeated_10_times": {
+        "people": 1,
+        "first_identity_block": 0,
+        "scored_tracks": 130,
+        "correctly_assigned_tracks": 130,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 20,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 8385,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0,
+        "repetitions": 10
+      }
+    },
+    "overlap": {
+      "expected_people": 2,
+      "window_seconds": 1.5,
+      "seconds": 17.06,
+      "sha256": "d9563899f410f060f37fa372962b22984acff9c5197bc4867518886d53227814",
+      "before": {
+        "people": 9,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_3",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_4"
+          ],
+          [
+            "speaker_5",
+            "speaker_2"
+          ],
+          [
+            "speaker_6",
+            "speaker_2"
+          ],
+          [
+            "speaker_6",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_7",
+            "speaker_8"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_1",
+            "speaker_7"
+          ],
+          [
+            "speaker_9"
+          ]
+        ],
+        "scored_tracks": 22,
+        "correctly_assigned_tracks": 12,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 79,
+        "same_speaker_pairs": 114,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 117
+      },
+      "classification_only": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            null
+          ]
+        ],
+        "scored_tracks": 22,
+        "correctly_assigned_tracks": 19,
+        "unassigned_tracks": 3,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 83,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 88
+      },
+      "after": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 21,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 102,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 108
+      },
+      "reversed_outputs": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ]
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 21,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 102,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 108
+      },
+      "repeated_10_times": {
+        "people": 2,
+        "first_identity_block": 0,
+        "scored_tracks": 210,
+        "correctly_assigned_tracks": 210,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 11145,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 10800,
+        "repetitions": 10
+      }
+    },
+    "arrival": {
+      "expected_people": 2,
+      "window_seconds": 1.5,
+      "seconds": 21.06,
+      "sha256": "03ff7b2d9e0b61c904c6faddf4509ef582dd9e6a5b018b21ef2c839d11eaa876",
+      "before": {
+        "people": 7,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_4",
+            "speaker_3"
+          ],
+          [
+            "speaker_5",
+            "speaker_3"
+          ],
+          [
+            "speaker_6",
+            "speaker_7"
+          ],
+          [
+            "speaker_5",
+            "speaker_3"
+          ],
+          [
+            "speaker_1",
+            "speaker_3"
+          ],
+          [
+            "speaker_1",
+            "speaker_3"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          []
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 15,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 52,
+        "same_speaker_pairs": 102,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 108
+      },
+      "classification_only": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            null,
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            null,
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          []
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 18,
+        "unassigned_tracks": 3,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 73,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 80
+      },
+      "after": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            null,
+            "speaker_2"
+          ],
+          [
+            null,
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          []
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 18,
+        "unassigned_tracks": 3,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 73,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 80
+      },
+      "reversed_outputs": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            null,
+            "speaker_2"
+          ],
+          [
+            null,
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          []
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 18,
+        "unassigned_tracks": 3,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 73,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 80
+      },
+      "repeated_10_times": {
+        "people": 2,
+        "first_identity_block": 0,
+        "scored_tracks": 210,
+        "correctly_assigned_tracks": 189,
+        "unassigned_tracks": 21,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 8866,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 8900,
+        "repetitions": 10
+      }
+    },
+    "noisy": {
+      "expected_people": 2,
+      "window_seconds": 1.5,
+      "seconds": 17.06,
+      "sha256": "5c198c979278f819c77bd17968a790eb5cd0284faf45814790b63e1636de5173",
+      "before": {
+        "people": 11,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_3",
+            "speaker_4"
+          ],
+          [
+            "speaker_1",
+            "speaker_5"
+          ],
+          [
+            "speaker_6",
+            "speaker_2"
+          ],
+          [
+            "speaker_7",
+            "speaker_2"
+          ],
+          [
+            "speaker_7",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_8",
+            "speaker_9"
+          ],
+          [
+            "speaker_8"
+          ],
+          [
+            "speaker_10",
+            "speaker_8"
+          ],
+          [
+            "speaker_11"
+          ]
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 10,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 1,
+        "false_split_pairs": 77,
+        "same_speaker_pairs": 102,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 108
+      },
+      "classification_only": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            null,
+            "speaker_1"
+          ],
+          [
+            null
+          ]
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 19,
+        "unassigned_tracks": 2,
+        "excluded_ambiguous_tracks": 1,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 83,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 88
+      },
+      "after": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 21,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 102,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 108
+      },
+      "reversed_outputs": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ]
+        ],
+        "scored_tracks": 21,
+        "correctly_assigned_tracks": 21,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 102,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 108
+      },
+      "repeated_10_times": {
+        "people": 2,
+        "first_identity_block": 0,
+        "scored_tracks": 210,
+        "correctly_assigned_tracks": 210,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 11145,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 10800,
+        "repetitions": 10
+      }
+    },
+    "file": {
+      "expected_people": 2,
+      "window_seconds": 4,
+      "seconds": 17.06,
+      "sha256": "d9563899f410f060f37fa372962b22984acff9c5197bc4867518886d53227814",
+      "before": {
+        "people": 3,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_3"
+          ]
+        ],
+        "scored_tracks": 8,
+        "correctly_assigned_tracks": 7,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 4,
+        "same_speaker_pairs": 13,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 15
+      },
+      "classification_only": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 8,
+        "correctly_assigned_tracks": 7,
+        "unassigned_tracks": 1,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 11,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 10
+      },
+      "after": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 8,
+        "correctly_assigned_tracks": 7,
+        "unassigned_tracks": 1,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 11,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 10
+      },
+      "reversed_outputs": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            null,
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ]
+        ],
+        "scored_tracks": 8,
+        "correctly_assigned_tracks": 7,
+        "unassigned_tracks": 1,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 9,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 12
+      },
+      "repeated_10_times": {
+        "people": 2,
+        "first_identity_block": 0,
+        "scored_tracks": 80,
+        "correctly_assigned_tracks": 79,
+        "unassigned_tracks": 1,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 1631,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 1450,
+        "repetitions": 10
+      }
+    },
+    "heldout_single_lj": {
+      "expected_people": 1,
+      "window_seconds": 1.5,
+      "seconds": 7.658125,
+      "sha256": "78bceb5c73d7abb599886678d65950dde3baafb542caefefb4f24bfe52ebaf6d",
+      "before": {
+        "people": 5,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_3"
+          ],
+          [
+            "speaker_4"
+          ],
+          [
+            "speaker_5"
+          ],
+          [
+            "speaker_5"
+          ],
+          []
+        ],
+        "scored_tracks": 6,
+        "correctly_assigned_tracks": 2,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 14,
+        "same_speaker_pairs": 15,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "classification_only": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            null,
+            null
+          ],
+          [
+            null
+          ],
+          [
+            null
+          ],
+          [
+            null
+          ],
+          []
+        ],
+        "scored_tracks": 6,
+        "correctly_assigned_tracks": 1,
+        "unassigned_tracks": 5,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 0,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "after": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          []
+        ],
+        "scored_tracks": 5,
+        "correctly_assigned_tracks": 5,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 10,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "reversed_outputs": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          []
+        ],
+        "scored_tracks": 5,
+        "correctly_assigned_tracks": 5,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 10,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "repeated_10_times": {
+        "people": 1,
+        "first_identity_block": 0,
+        "scored_tracks": 50,
+        "correctly_assigned_tracks": 50,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 1225,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0,
+        "repetitions": 10
+      }
+    },
+    "heldout_pair_lj": {
+      "expected_people": 2,
+      "window_seconds": 1.5,
+      "seconds": 17.06,
+      "sha256": "c2dd529d625cf5db21c0910617b94b2e678a28e4d381d4f8203e86ca684d1354",
+      "before": {
+        "people": 7,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_3"
+          ],
+          [
+            "speaker_1",
+            "speaker_4"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_5"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_6"
+          ],
+          [
+            "speaker_7"
+          ]
+        ],
+        "scored_tracks": 18,
+        "correctly_assigned_tracks": 13,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 32,
+        "same_speaker_pairs": 88,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 65
+      },
+      "classification_only": {
+        "people": 1,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            null
+          ]
+        ],
+        "scored_tracks": 18,
+        "correctly_assigned_tracks": 12,
+        "unassigned_tracks": 6,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 66,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 0
+      },
+      "after": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ]
+        ],
+        "scored_tracks": 18,
+        "correctly_assigned_tracks": 17,
+        "unassigned_tracks": 1,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 84,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 52
+      },
+      "reversed_outputs": {
+        "people": 2,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            null,
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            null
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2",
+            "speaker_1"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2",
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ]
+        ],
+        "scored_tracks": 18,
+        "correctly_assigned_tracks": 16,
+        "unassigned_tracks": 2,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 72,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 48
+      },
+      "repeated_10_times": {
+        "people": 2,
+        "first_identity_block": 0,
+        "scored_tracks": 180,
+        "correctly_assigned_tracks": 179,
+        "unassigned_tracks": 1,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 9561,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 6370,
+        "repetitions": 10
+      }
+    },
+    "heldout_three_turns": {
+      "expected_people": 3,
+      "window_seconds": 1.5,
+      "seconds": 64.838125,
+      "sha256": "7009216ac552501793890d7b679139b601ada723b16dd6aa3e574f2bef7d5279",
+      "before": {
+        "people": 15,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_2"
+          ],
+          [
+            "speaker_2",
+            "speaker_3"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_4",
+            "speaker_1"
+          ],
+          [
+            "speaker_5"
+          ],
+          [
+            "speaker_6"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_7"
+          ],
+          [
+            "speaker_8"
+          ],
+          [],
+          [],
+          [],
+          [
+            "speaker_9"
+          ],
+          [
+            "speaker_10"
+          ],
+          [
+            "speaker_11",
+            "speaker_12"
+          ],
+          [
+            "speaker_10"
+          ],
+          [
+            "speaker_10"
+          ],
+          [
+            "speaker_10"
+          ],
+          [],
+          [
+            "speaker_1",
+            "speaker_13"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_14",
+            "speaker_2"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_15",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_4",
+            "speaker_1"
+          ],
+          [],
+          []
+        ],
+        "scored_tracks": 46,
+        "correctly_assigned_tracks": 31,
+        "unassigned_tracks": 0,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 271,
+        "same_speaker_pairs": 492,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 543
+      },
+      "classification_only": {
+        "people": 3,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            null
+          ],
+          [
+            null
+          ],
+          [
+            null
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [],
+          [],
+          [],
+          [
+            null
+          ],
+          [
+            null
+          ],
+          [
+            null,
+            null
+          ],
+          [
+            null
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            null,
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            null,
+            "speaker_1"
+          ],
+          [],
+          []
+        ],
+        "scored_tracks": 46,
+        "correctly_assigned_tracks": 34,
+        "unassigned_tracks": 12,
+        "excluded_ambiguous_tracks": 0,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 322,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 239
+      },
+      "after": {
+        "people": 3,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            null
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [],
+          [],
+          [],
+          [
+            null
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [],
+          []
+        ],
+        "scored_tracks": 40,
+        "correctly_assigned_tracks": 38,
+        "unassigned_tracks": 2,
+        "excluded_ambiguous_tracks": 2,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 338,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 365
+      },
+      "reversed_outputs": {
+        "people": 3,
+        "first_identity_block": 0,
+        "assignments": [
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            null
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            null
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [
+            "speaker_2"
+          ],
+          [],
+          [],
+          [],
+          [
+            null
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [
+            "speaker_3"
+          ],
+          [],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1",
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [
+            "speaker_1"
+          ],
+          [],
+          []
+        ],
+        "scored_tracks": 40,
+        "correctly_assigned_tracks": 38,
+        "unassigned_tracks": 2,
+        "excluded_ambiguous_tracks": 2,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 338,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 365
+      },
+      "repeated_10_times": {
+        "people": 3,
+        "first_identity_block": 0,
+        "scored_tracks": 400,
+        "correctly_assigned_tracks": 398,
+        "unassigned_tracks": 2,
+        "excluded_ambiguous_tracks": 20,
+        "false_split_pairs": 0,
+        "same_speaker_pairs": 36752,
+        "false_merge_pairs": 0,
+        "different_speaker_pairs": 42251,
+        "repetitions": 10
+      }
+    }
+  }
+}

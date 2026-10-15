@@ -76,7 +76,7 @@ def test_learning_improves_unseen_variant_and_survives_restart(tmp_path):
         registry.assign([voice()], [1.2])
         for _ in range(4):
             assert registry.assign([voice(45)], [1.2]) == ['speaker_1']
-    assert frozen.assign([voice(70)], [1.2]) == ['speaker_2']
+    assert frozen.assign([voice(70)], [1.2]) == [None]
     restored = SpeakerRegistry(store=ProfileStore(path))
     assert restored.assign([voice(70)], [1.2]) == ['speaker_1']
     assert restored.speakers[0].learned_observations == 4  # anchor guard blocks risky learning

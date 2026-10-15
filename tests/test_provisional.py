@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from selective_hearing.core import SpeakerRegistry, OutputControl, AudioPacket
+from selective_hearing.core import Speaker, SpeakerRegistry, OutputControl, AudioPacket
 from selective_hearing.profiles import ProfileStore
 
 
@@ -23,12 +23,14 @@ def repair_fixture(tmp_path, *, references=3, conflict=False):
     return store, draft, target
 
 
-def test_first_and_later_short_voices_are_immediately_saved_and_selectable(tmp_path):
+def test_first_short_voice_is_immediate_and_later_short_voice_accumulates(tmp_path):
     store = ProfileStore(tmp_path / 'people.sqlite3')
     registry = SpeakerRegistry(store=store)
-    assert registry.assign([voice(0), voice(90)], [.2, .25]) == ['speaker_1', 'speaker_2']
-    assert len(store.load_speakers()) == 2 and not any(s.ready for s in registry.speakers)
-    assert registry.assign([voice(180)], [.2]) == ['speaker_3']
+    assert registry.assign([voice(0), voice(90)], [.2, .3]) == ['speaker_1', None]
+    assert len(store.load_speakers()) == 1 and not registry.speakers[0].ready
+    registry = SpeakerRegistry(store=ProfileStore(store.path))
+    assert registry.assign([voice(90)], [.3]) == ['speaker_2']
+    assert registry.assign([voice(180)], [1.2]) == ['speaker_3']
     assert registry.assign([voice(90)], [.3]) == ['speaker_2']
     assert len(SpeakerRegistry(store=ProfileStore(store.path)).speakers) == 3
 
@@ -61,9 +63,9 @@ def test_repeated_short_matches_do_not_make_a_wrong_draft_irreparable(tmp_path):
 
 def test_close_existing_choices_do_not_create_another_profile_or_train_on_ambiguity():
     registry = SpeakerRegistry()
-    registry.assign([voice(0), voice(60)], [1, 1])
+    registry.speakers = [Speaker(f"speaker_{i + 1}", voice(angle)) for i, angle in enumerate((0, 60))]
     assigned = registry.assign([voice(29)], [.3])
-    assert assigned == ['speaker_1'] and len(registry.speakers) == 2
+    assert assigned == [None] and len(registry.speakers) == 2
     assert not any(s.learned_observations for s in registry.speakers)
 
 

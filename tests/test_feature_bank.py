@@ -129,8 +129,9 @@ def test_pending_features_survive_restart_and_old_profile_migrates(tmp_path):
     restored = ProfileStore(path)
     assert restored.load_speakers()[0].id == person.id
     registry = SpeakerRegistry(store=restored)
-    assert registry.assign([voice(90)], [.8]) == ['speaker_2']
+    assert registry.assign([voice(90)], [.8]) == [None]
     again = SpeakerRegistry(store=ProfileStore(path))
     assert len(again.feature_bank.samples) == 1
-    assert again.feature_bank.samples[0].speaker_id == 'speaker_2'
+    assert again.feature_bank.samples[0].speaker_id is None
+    assert len(again.candidates) == 1
     assert again.assign([voice(90)], [1.2]) == ['speaker_2']

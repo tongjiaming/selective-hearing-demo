@@ -1,0 +1,49 @@
+{
+  "method": "Local CPU, warmed model, actual Processor and temporary SQLite profiles. Public overlapping speech only; excludes audio device and Bluetooth latency. Single run, not a sustained-load guarantee.",
+  "contexts": {
+    "0": {
+      "full_blocks": 11,
+      "window_seconds": 1.5,
+      "median_compute_seconds": 0.8247592998668551,
+      "p95_compute_seconds": 0.9694966999813914,
+      "max_compute_seconds": 0.9867301001213491,
+      "blocks_slower_than_capture": 0,
+      "compute_seconds": [
+        0.9005387998186052,
+        0.9867301001213491,
+        0.8109640995971859,
+        0.8112114001996815,
+        0.7536078002303839,
+        0.9076831000857055,
+        0.8826481997966766,
+        0.9522632998414338,
+        0.8057915000244975,
+        0.6731225997209549,
+        0.8247592998668551
+      ],
+      "people": 2
+    },
+    "3": {
+      "full_blocks": 11,
+      "window_seconds": 1.5,
+      "median_compute_seconds": 1.2235523001290858,
+      "p95_compute_seconds": 1.339264049893245,
+      "max_compute_seconds": 1.376822100020945,
+      "blocks_slower_than_capture": 0,
+      "compute_seconds": [
+        0.8381269997917116,
+        1.2229550001211464,
+        1.2235523001290858,
+        1.3017059997655451,
+        1.376822100020945,
+        1.2251392998732626,
+        1.2821434997022152,
+        1.2617444000206888,
+        1.2164380000904202,
+        0.9854012001305819,
+        0.9119115001522005
+      ],
+      "people": 2
+    }
+  }
+}

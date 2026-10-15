@@ -56,8 +56,17 @@ class ModelBackend:
                                  attention_channels=128, lin_neurons=192)
         self.encoder.load_state_dict(torch.load(model_dir / "ecapa.ckpt", map_location="cpu", weights_only=True), strict=True)
         self.encoder.eval()
-        self.vad = load_silero_vad()
+        # The packaged ONNX VAD runs on its own single-threaded CPU session.
+        # Repeated tiny Torch VAD calls otherwise consume a large share of the
+        # short-window budget. No network or additional weights are required.
+        self.vad = load_silero_vad(onnx=True)
         self.timestamps = get_speech_timestamps
+        # Build CPU kernels for the rolling context while the UI still says
+        # loading, rather than stalling the second live block. Synthetic zeros
+        # never reach identity learning, playback, or any persistent store.
+        warmup = np.zeros(48000, np.float32)
+        self.separate(warmup)
+        self.embedding(warmup)
 
     def embedding(self, audio16):
         torch = self.torch
@@ -78,44 +87,78 @@ class ModelBackend:
         output = calibrate_sources(output, signal)
         return [resample(track, 8000, 16000)[:len(audio16)] for track in output]
 
-    def speech(self, audio16):
+    def speech_mask(self, audio16):
         torch = self.torch
         with torch.inference_mode():
             self.vad.reset_states()
             segments = self.timestamps(torch.from_numpy(np.asarray(audio16, np.float32)), self.vad,
                                        sampling_rate=16000, threshold=0.6,
                                        min_speech_duration_ms=200)
-        if not segments:
-            return np.empty(0, np.float32)
-        return np.concatenate([audio16[s["start"]:s["end"]] for s in segments])
+        mask = np.zeros(len(audio16), dtype=bool)
+        for segment in segments:
+            mask[segment['start']:segment['end']] = True
+        return mask
+
+    def speech(self, audio16):
+        return audio16[self.speech_mask(audio16)]
 
 
 class Processor:
-    def __init__(self, backend, registry=None):
+    def __init__(self, backend, registry=None, context_seconds=3.0):
         self.backend = backend
         self.registry = registry if registry is not None else SpeakerRegistry()
+        # A backend without frame-aligned VAD cannot safely distinguish old
+        # speech from current activity, so it retains the independent windows.
+        self.context_samples = int(context_seconds * 16000) if hasattr(backend, 'speech_mask') else 0
+        self.history = np.empty(0, np.float32)
+        self.position = 0
+        self.reference_end = 0
+        self.reference_eligible = True
 
-    def process(self, audio16, captured_at=0.0):
-        begin = time.perf_counter()
+    def extract_features(self, audio16):
+        """Past-only context; return audio/activity strictly for the NEW block."""
         audio16 = np.asarray(audio16, np.float32)
+        context = np.concatenate([self.history, audio16]) if self.context_samples else audio16
+        context = context[-max(self.context_samples, len(audio16)):] if len(context) else context
+        self.position += len(audio16)
+        # Retain only transient RAM audio, never write context to profiles.
+        self.history = context[-self.context_samples:].copy() if self.context_samples else np.empty(0, np.float32)
+        self.reference_eligible = self.position - len(context) >= self.reference_end
         tracks, vectors, durations = [], [], []
         voiced_seconds = []
         mixture_rms = float(np.sqrt(np.mean(audio16 ** 2))) if len(audio16) else 0.0
         minimum_samples = int(MIN_SPEECH_SECONDS * 16000)
         if len(audio16) >= minimum_samples and mixture_rms > 0.002:
-            separated = self.backend.separate(audio16)
-            for track in separated:
+            separated = self.backend.separate(context)
+            for full_track in separated:
+                track = full_track[-len(audio16):]
                 track_rms = float(np.sqrt(np.mean(track ** 2)))
                 if track_rms < max(0.002, mixture_rms * 0.12):
                     continue
-                speech = self.backend.speech(track)
-                voiced_seconds.append(len(speech) / 16000)
-                if len(speech) < minimum_samples:
+                if self.context_samples:
+                    mask = self.backend.speech_mask(full_track)
+                    speech = full_track[mask]
+                    current_samples = int(np.count_nonzero(mask[-len(audio16):]))
+                else:
+                    speech = self.backend.speech(track)
+                    current_samples = len(speech)
+                voiced_seconds.append(current_samples / 16000)
+                if current_samples < minimum_samples:
                     continue
                 vectors.append(self.backend.embedding(speech))
-                durations.append(len(speech) / 16000)
+                durations.append(current_samples / 16000)
                 tracks.append(track)
-        ids = self.registry.assign(vectors, durations)
+        if vectors and self.reference_eligible:
+            self.reference_end = self.position
+        return tracks, vectors, durations, voiced_seconds
+
+    def process(self, audio16, captured_at=0.0):
+        begin = time.perf_counter()
+        audio16 = np.asarray(audio16, np.float32)
+        tracks, vectors, durations, voiced_seconds = self.extract_features(audio16)
+        mixture_rms = float(np.sqrt(np.mean(audio16 ** 2))) if len(audio16) else 0.0
+        minimum_samples = int(MIN_SPEECH_SECONDS * 16000)
+        ids = self.registry.assign(vectors, durations, reference_eligible=self.reference_eligible)
         mapped = {}
         for identity, track in zip(ids, tracks):
             if identity is not None:
@@ -123,7 +166,8 @@ class Processor:
         decisions = self.registry.decisions
         messages = []
         created = sum(d['status'] == 'created' for d in decisions)
-        recognized = sum(d['status'] == 'recognized' for d in decisions)
+        recognized = len({d['speaker_id'] for d in decisions if d['status'] == 'recognized'} -
+                         {d.get('speaker_id') for d in decisions if d['status'] == 'created'})
         if created:
             messages.append(f'已新增 {created} 人（先建档，继续确认）')
         if recognized:
@@ -157,7 +201,7 @@ class Processor:
         return AudioPacket(audio16, mapped, captured_at), {
             "seconds": duration, "compute_seconds": elapsed,
             "rtf": elapsed / max(duration, 0.001),
-            "active": [s for s in ids if s is not None],
+            "active": list(dict.fromkeys(s for s in ids if s is not None)),
             "unmatched": sum(s is None for s in ids),
             "detected_speech_tracks": sum(seconds > 0 for seconds in voiced_seconds),
             "short_speech_tracks": sum(MIN_SPEECH_SECONDS <= seconds < .5 for seconds in durations),

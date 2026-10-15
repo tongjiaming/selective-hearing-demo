@@ -42,12 +42,12 @@ def baseline_registry(ref):
 
 def evaluate(backend, old_class, waveform, references, window_seconds, baseline_min_speech_seconds=0):
     old = old_class()
-    processor = Processor(backend)
+    processor = Processor(backend, context_seconds=0)
     current_assign = processor.registry.assign
     before_trace, after_trace = [], []
     before_eligible = 0
 
-    def compare(vectors, durations):
+    def compare(vectors, durations, **kwargs):
         nonlocal before_eligible
         indices = [i for i, seconds in enumerate(durations) if seconds >= baseline_min_speech_seconds]
         before_eligible += len(indices)
@@ -56,7 +56,7 @@ def evaluate(backend, old_class, waveform, references, window_seconds, baseline_
         for index, identity in zip(indices, identities):
             before[index] = identity
         before_trace.append(before)
-        assigned = current_assign(vectors, durations)
+        assigned = current_assign(vectors, durations, **kwargs)
         after_trace.append(assigned)
         return assigned
 

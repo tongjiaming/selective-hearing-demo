@@ -104,15 +104,16 @@ class VoiceCandidate:
 class SpeakerRegistry:
     """Optionally persistent identities; each separator block has at most two sources.
 
-    Joint one-to-one assignment handles separator output permutations.
-    Usable unmatched voices are immediately selectable drafts by default.
+    Joint assignment handles separator permutations and duplicate outputs.
+    First voices are selectable immediately; ambiguous novelty accumulates evidence.
     Strong later evidence can reassign samples and retire duplicate drafts.
     eager=False retains the historical deferred-discovery comparison mode.
     """
     def __init__(self, threshold=0.55, new_threshold=0.30, margin=0.10, min_new_seconds=1.0,
-                 short_threshold=0.45, candidate_threshold=0.50,
+                 short_threshold=None, candidate_threshold=0.50,
                  candidate_blocks=6, max_candidates=12, store=None, learning=True, eager=True):
         self.threshold = threshold
+        short_threshold = (0.35 if eager else 0.45) if short_threshold is None else short_threshold
         self.short_threshold = short_threshold
         self.new_threshold = new_threshold
         self.margin = margin
@@ -134,8 +135,7 @@ class SpeakerRegistry:
         self.discovery_ceiling = min(short_threshold, threshold)
         self.feature_bank = FeatureBank(store.load_samples() if store is not None else ())
         self.last_corrections = []
-        if not eager:
-            self._restore_candidates()
+        self._restore_candidates()
 
     def _restore_candidates(self):
         # Recent unresolved evidence survives an app restart. Reconstruct only
@@ -187,7 +187,11 @@ class SpeakerRegistry:
         # Brief usable speech must accumulate rather than be discarded forever.
         if seconds < min(MIN_SPEECH_SECONDS, self.min_new_seconds):
             return self._discovery_result('short_speech')
-        if self.eager:
+        nearest = max(self._scores(vector, self.speakers), default=-1.0)
+        # A short first voice gets controls immediately. Once people exist,
+        # only a clearly different, sufficiently long voice is a one-shot new
+        # identity. One weak/noisy match is not evidence of a different person.
+        if self.eager and (not self.speakers or (nearest < .20 and seconds >= self.min_new_seconds)):
             identity = self._register(vector, seconds)
             return self._discovery_result('created', identity, speaker_id=identity, provisional=True)
         if not self.speakers and seconds >= self.min_new_seconds:
@@ -218,9 +222,11 @@ class SpeakerRegistry:
             candidate = VoiceCandidate(vector, seconds, self.block, self.block, borderline=borderline, recent_vectors=[vector.copy()])
             self.candidates.append(candidate)
             self.candidates = self.candidates[-self.max_candidates:]
-        needed = 3 if candidate.borderline else 2
-        seconds_needed = self.min_new_seconds if not self.speakers else needed * self.min_new_seconds
-        observations = candidate.consistent_observations if candidate.borderline else candidate.observations
+        needed = 2 if self.eager else 3 if candidate.borderline else 2
+        seconds_needed = (0.6 if self.eager else
+                          self.min_new_seconds if not self.speakers else needed * self.min_new_seconds)
+        observations = (candidate.observations if self.eager else
+                        candidate.consistent_observations if candidate.borderline else candidate.observations)
         if observations >= needed and candidate.seconds + 1e-8 >= seconds_needed:
             identity = self._register(candidate.vector, candidate.seconds, candidate.observations)
             self.candidates.remove(candidate)
@@ -230,7 +236,7 @@ class SpeakerRegistry:
                                       required_seconds=seconds_needed, borderline=candidate.borderline,
                                       collected_observations=candidate.observations)
 
-    def assign(self, vectors, durations):
+    def assign(self, vectors, durations, *, reference_eligible=True):
         if len(vectors) != len(durations) or len(vectors) > 2:
             raise ValueError("每块最多两路声音，特征和时长必须对应")
         self.block += 1
@@ -249,29 +255,38 @@ class SpeakerRegistry:
             for j, score in enumerate(row):
                 others = [x for k, x in enumerate(row) if k != j]
                 others.extend(float(vectors[i] @ c.vector) for c in self.candidates if not c.borderline)
-                if score >= threshold and (self.eager or not others or score - max(others) >= self.margin):
+                if score >= threshold and (not others or score - max(others) >= self.margin):
                     allowed.append(j)
             options.append(allowed)
         best, best_score = tuple([None] * len(vectors)), -1.0
         for choice in product(*options):
             used = [x for x in choice if x is not None]
             if len(set(used)) != len(used):
-                continue
+                # A fixed two-source separator can split ONE voice into two
+                # tracks. Reuse the identity only when both independently
+                # match it and their own voice features also agree.
+                if not self.eager or float(vectors[0] @ vectors[1]) < .35:
+                    continue
             score = sum(float(scores[i, j]) for i, j in enumerate(choice) if j is not None)
             if score > best_score:
                 best, best_score = choice, score
         result = []
+        # For a shared identity only the longer track contributes a learning
+        # observation. Duplicate separator outputs are not independent votes.
+        primary = {choice: max((i for i, other in enumerate(best) if other == choice),
+                               key=lambda i: durations[i]) for choice in best if choice is not None}
         for i, choice in enumerate(best):
             if choice is not None:
                 speaker = known[choice]
                 competitors = [float(x) for j, x in enumerate(scores[i]) if j != choice]
                 competitors.extend(float(vectors[i] @ c.vector) for c in self.candidates if not c.borderline)
-                learn = (self.learning and durations[i] >= 1.0 and scores[i, choice] >= 0.55
+                learn = (self.learning and reference_eligible and durations[i] >= 1.0 and scores[i, choice] >= 0.55
                          and (not competitors or scores[i, choice] - max(competitors) >= 0.15))
-                if self.store is not None:
-                    self.store.record_match(speaker, vectors[i], durations[i], learn)
-                else:
-                    speaker.observe(vectors[i], durations[i], learn)
+                if primary[choice] == i:
+                    if self.store is not None:
+                        self.store.record_match(speaker, vectors[i], durations[i], learn)
+                    else:
+                        speaker.observe(vectors[i], durations[i], learn)
                 self.decisions.append({'status': 'recognized', 'speaker_id': speaker.id})
                 # A reliable return to a known identity resolves its temporary
                 # drift candidates; those must not later become duplicates.
@@ -279,16 +294,28 @@ class SpeakerRegistry:
                                    if float(vectors[i] @ c.vector) < self.candidate_threshold]
                 result.append(speaker.id)
                 continue
-            result.append(self._discover(vectors[i], durations[i]))
-        entries = [(v, seconds, identity) for v, seconds, identity in zip(vectors, durations, result)
-                   if seconds >= MIN_SPEECH_SECONDS]
+            # The first output can create an identity in this very block.
+            # Let a duplicate second output reuse it without a second profile.
+            if (self.eager and i and result[0] is not None
+                    and float(vectors[i] @ vectors[0]) >= .35
+                    and result[0] not in {s.id for s in known}):
+                result.append(result[0])
+                self.decisions.append({'status': 'recognized', 'speaker_id': result[0]})
+            else:
+                result.append(self._discover(vectors[i], durations[i]))
+        entries = [(v, seconds, identity) for i, (v, seconds, identity) in enumerate(zip(vectors, durations, result))
+                   if seconds >= MIN_SPEECH_SECONDS and (identity is None or i == max(
+                       (j for j, other in enumerate(result) if other == identity), key=lambda j: durations[j]))]
         if self.store is not None and entries:
-            self.store.add_samples(entries)
+            self.store.add_samples(entries, reference_eligible=reference_eligible)
             self.feature_bank = FeatureBank(self.store.load_samples())
         else:
             for vector, seconds, identity in entries:
-                self.feature_bank.add(vector, seconds, identity, self.block)
-        if len(result) == 2 and all(result) and result[0] != result[1]:
+                self.feature_bank.add(vector, seconds, identity, self.block, reference_eligible)
+        if (len(result) == 2 and all(result) and result[0] != result[1]
+                and (not self.eager or float(vectors[0] @ vectors[1]) < .20)):
+            # Only clearly distinct voices create a lasting cannot-link edge;
+            # separator output count alone is not evidence of two humans.
             pair = tuple(sorted(result))
             self.conflicts.add(pair)
             if self.store is not None:
@@ -296,7 +323,7 @@ class SpeakerRegistry:
         before = list((sample.id, sample.speaker_id) for sample in self.feature_bank.samples)
         # A few repeated short matches can light the confirmation indicator,
         # but are still insufficient independent evidence to anchor a class.
-        support = {s.id: sum(sample.speaker_id == s.id and sample.seconds >= 1
+        support = {s.id: sum(sample.speaker_id == s.id and sample.seconds >= 1 and sample.reference_eligible
                            and float(sample.vector @ s.vector) >= .55
                            for sample in self.feature_bank.samples) for s in self.speakers}
         provisional = {s.id for s in self.speakers if not s.ready or support[s.id] < 3} if self.eager else set()

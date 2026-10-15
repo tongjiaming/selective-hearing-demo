@@ -140,7 +140,7 @@ class App:
         self.window_box.pack(side='left')
         self.window_box.bind('<Return>', lambda _: self.save_window())
         self.window_box.bind('<FocusOut>', lambda _: self.save_window())
-        ttk.Label(window_row, text='1–10 秒；加长通常更稳，但延迟更高。停止后修改。',
+        ttk.Label(window_row, text='1–10 秒；短窗会参考最近 3 秒声音，不等待额外采样。停止后修改。',
                   foreground='#67758a').pack(side='left', padx=8)
         self.model_status = ttk.Label(controls, text="等待加载模型…", foreground="#67758a")
         self.model_status.pack(anchor="w", pady=(8, 0))
