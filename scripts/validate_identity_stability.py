@@ -24,6 +24,7 @@ from validate_models import si_sdr
 def baseline_registry(ref):
     source = subprocess.check_output(['git', 'show', f'{ref}:selective_hearing/core.py'], cwd=ROOT)
     module = types.ModuleType('_baseline_identity_core')
+    module.__package__ = 'selective_hearing'
     sys.modules[module.__name__] = module
     exec(compile(source, f'{ref}/core.py', 'exec'), module.__dict__)
     return module.SpeakerRegistry
@@ -94,7 +95,7 @@ def main():
         cases[name] = evaluate(backend, old_class, waveform, refs, window)
         print(name, json.dumps({k: v for k, v in cases[name].items() if not k.endswith('assignments')}, ensure_ascii=False), flush=True)
     report = {'baseline_ref': args.baseline_ref, 'source': 'SpeechBrain public ASR samples',
-              'method': f'Same separated embeddings sent to old and new registries. Live windows are non-overlapping {window:g} s.',
+              'method': f'Same separated embeddings sent to old and new registries. Live windows are non-overlapping {args.live_window_seconds:g} s; file windows are 4 s.',
               'limitations': 'Small synthetic English fixtures; not a user microphone recording. Unknown segments remain silent; no guarantee of real-room accuracy.',
               'manifest': manifest, 'cases': cases}
     destination = ROOT / args.output

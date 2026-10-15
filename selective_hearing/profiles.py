@@ -1,4 +1,4 @@
-"""Local speaker profiles. SQLite transactions; no audio or candidate storage."""
+"""Local speaker profiles and bounded segment features; no waveform storage."""
 from contextlib import contextmanager
 from pathlib import Path
 import math
@@ -7,6 +7,7 @@ import sqlite3
 import numpy as np
 
 from .core import Speaker, unit
+from .feature_bank import VoiceSample, MAX_SAMPLES, MAX_PER_SPEAKER, MAX_PENDING
 from .model_assets import ASSETS
 
 MODEL_KEY = 'ecapa-fbank80-sentence-mean-v1:' + ASSETS['ecapa.ckpt']['sha256']
@@ -50,11 +51,16 @@ class ProfileStore:
                 learned_vector BLOB,
                 learned_seconds REAL NOT NULL DEFAULT 0,
                 learned_observations INTEGER NOT NULL DEFAULT 0)''')
+            db.execute('CREATE TABLE IF NOT EXISTS voice_samples ('
+                       'id INTEGER PRIMARY KEY AUTOINCREMENT, vector BLOB NOT NULL, seconds REAL NOT NULL, '
+                       'speaker_id INTEGER REFERENCES speakers(id) ON DELETE CASCADE, batch_id INTEGER NOT NULL DEFAULT 0)')
         self.load_speakers()  # Validate before the application starts capture.
+        self.load_samples()
 
     @contextmanager
     def connection(self):
         db = sqlite3.connect(self.path, timeout=5)
+        db.execute('PRAGMA foreign_keys=ON')
         try:
             with db:
                 yield db
@@ -95,12 +101,53 @@ class ProfileStore:
                                   learned, learned_seconds, learned_observations))
         return result
 
+    def load_samples(self):
+        with self.connection() as db:
+            rows = db.execute('SELECT id, vector, seconds, speaker_id, batch_id FROM voice_samples ORDER BY id DESC LIMIT ?',
+                              (MAX_SAMPLES,)).fetchall()
+        result = []
+        for number, blob, seconds, speaker, batch_id in reversed(rows):
+            if number < 1 or not math.isfinite(seconds) or seconds < .75:
+                raise ValueError('人声样本资料异常，未覆盖原资料。')
+            result.append(VoiceSample(number, self.vector(np.frombuffer(blob, dtype='<f4')),
+                                     seconds, f'speaker_{speaker}' if speaker is not None else None, batch_id))
+        return result
+
+    def add_samples(self, entries):
+        rows = [(self.vector(v).astype('<f4').tobytes(), seconds,
+                 self.number(identity) if identity is not None else None) for v, seconds, identity in entries]
+        if any(not math.isfinite(r[1]) or r[1] < .75 for r in rows):
+            raise ValueError('无效人声样本')
+        with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            batch_id = db.execute('SELECT COALESCE(MAX(batch_id), 0) + 1 FROM voice_samples').fetchone()[0]
+            db.executemany('INSERT INTO voice_samples (vector, seconds, speaker_id, batch_id) VALUES (?, ?, ?, ?)',
+                           [(*row, batch_id) for row in rows])
+
+    def correct_samples(self, changes):
+        with self.connection() as db:
+            # Compare-and-set avoids overwriting another app instance's later
+            # correction. IDs are allocated by SQLite, never by each process.
+            for number, previous, current in changes:
+                db.execute('UPDATE voice_samples SET speaker_id=? WHERE id=? AND speaker_id IS ?',
+                           (self.number(current), number, self.number(previous) if previous else None))
+            # Bounded per-person neighborhoods prevent one talkative speaker
+            # from crowding everybody else out of the global feature memory.
+            db.execute('DELETE FROM voice_samples WHERE id IN ('
+                       'SELECT id FROM (SELECT id, speaker_id, ROW_NUMBER() OVER '
+                       '(PARTITION BY speaker_id ORDER BY id DESC) AS rank FROM voice_samples) '
+                       'WHERE rank > CASE WHEN speaker_id IS NULL THEN ? ELSE ? END)',
+                       (MAX_PENDING, MAX_PER_SPEAKER))
+            db.execute('DELETE FROM voice_samples WHERE id NOT IN '
+                       '(SELECT id FROM voice_samples ORDER BY id DESC LIMIT ?)', (MAX_SAMPLES,))
+
     def summaries(self):
         with self.connection() as db:
             rows = db.execute('SELECT id, name, observations, seconds, learned_observations FROM speakers ORDER BY id').fetchall()
+            counts = dict(db.execute('SELECT speaker_id, COUNT(*) FROM voice_samples GROUP BY speaker_id'))
         return [{'id': f'speaker_{n}', 'name': name, 'observations': observations,
                  'seconds': seconds, 'ready': observations >= 2 and seconds >= 1.5, 'saved': True,
-                 'learned_observations': learned}
+                 'learned_observations': learned, 'feature_samples': counts.get(n, 0)}
                 for n, name, observations, seconds, learned in rows]
 
     def window_seconds(self, default):

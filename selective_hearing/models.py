@@ -98,6 +98,7 @@ class Processor:
         begin = time.perf_counter()
         audio16 = np.asarray(audio16, np.float32)
         tracks, vectors, durations = [], [], []
+        voiced_seconds = []
         mixture_rms = float(np.sqrt(np.mean(audio16 ** 2))) if len(audio16) else 0.0
         if len(audio16) >= 16000 and mixture_rms > 0.002:
             separated = self.backend.separate(audio16)
@@ -106,6 +107,7 @@ class Processor:
                 if track_rms < max(0.002, mixture_rms * 0.12):
                     continue
                 speech = self.backend.speech(track)
+                voiced_seconds.append(len(speech) / 16000)
                 if len(speech) < 12000:
                     continue
                 vectors.append(self.backend.embedding(speech))
@@ -113,6 +115,31 @@ class Processor:
                 tracks.append(track)
         ids = self.registry.assign(vectors, durations)
         mapped = {identity: track for identity, track in zip(ids, tracks) if identity is not None}
+        decisions = self.registry.decisions
+        messages = []
+        created = sum(d['status'] == 'created' for d in decisions)
+        recognized = sum(d['status'] == 'recognized' for d in decisions)
+        if created:
+            messages.append(f'已新增 {created} 人')
+        if recognized:
+            messages.append(f'匹配到已有 {recognized} 人')
+        for decision in decisions:
+            if decision['status'] == 'confirming':
+                messages.append(f"新声音确认中：稳定证据 {decision['observations']}/{decision['required_observations']}，"
+                                f"有效语音 {decision['seconds']:.1f}/{decision['required_seconds']:.1f} 秒")
+            elif decision['status'].startswith('ambiguous'):
+                messages.append('有声音暂无法区分归属，特征已暂存')
+            elif decision['status'] == 'short_speech':
+                messages.append('有效人声太短，暂不建档')
+        if not messages:
+            if mixture_rms <= .002:
+                messages.append('输入过弱，尚未进入人声识别；请检查麦克风输入音量')
+            elif len(audio16) < 16000:
+                messages.append('本段不足 1 秒，未参与识别')
+            else:
+                messages.append(f'本段有效人声最长 {max(voiced_seconds, default=0):.1f} 秒，未达到 0.75 秒')
+        if self.registry.last_corrections:
+            messages.append(f'更新 {len(self.registry.last_corrections)} 段历史特征归属')
         elapsed = time.perf_counter() - begin
         duration = len(audio16) / 16000
         return AudioPacket(audio16, mapped, captured_at), {
@@ -121,5 +148,9 @@ class Processor:
             "active": [s for s in ids if s is not None],
             "unmatched": sum(s is None for s in ids),
             "pending_speakers": len(self.registry.candidates),
+            "recognition_status": '；'.join(dict.fromkeys(messages)),
+            "identity_decisions": decisions,
+            "feature_samples": len(self.registry.feature_bank.samples),
+            "reassigned_samples": len(self.registry.last_corrections),
             "speakers": self.registry.snapshot(),
         }

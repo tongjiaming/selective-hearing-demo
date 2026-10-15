@@ -29,7 +29,7 @@ def test_short_unmatched_fragment_does_not_create_extra_person():
     registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
     assert registry.assign([[0, 0, 1]], [.8]) == [None]
     assert registry.assign([[1, 0, 0]], [.8]) == ['speaker_1']  # can still match an existing identity
-    assert registry.assign([[0, 0, 1]], [1.2]) == [None]
+    assert registry.assign([[0, 0, 1]], [1.2]) == ['speaker_3']  # .8 + 1.2 seconds now accumulate
     assert registry.assign([[0, 0, 1]], [1.2]) == ['speaker_3']
 
 
@@ -63,11 +63,12 @@ def test_short_voice_drift_matches_without_lowering_new_person_evidence():
     # 0.48 cosine: short-frame recognition can recover the existing person.
     changed = [0.48, np.sqrt(1 - .48 ** 2), 0]
     assert registry.assign([changed], [1.2]) == ['speaker_1']
-    # The uncertainty band neither creates a person nor routes to a known one.
+    # The former dead zone now accumulates conservative, repeated evidence.
     uncertain = [0.35, 0, np.sqrt(1 - .35 ** 2)]
-    for _ in range(12):
-        assert registry.assign([uncertain], [1.2]) == [None]
-    assert len(registry.speakers) == 1 and not registry.candidates
+    assert registry.assign([uncertain], [1.2]) == [None]
+    assert registry.assign([uncertain], [1.2]) == [None]
+    assert registry.assign([uncertain], [1.2]) == ['speaker_2']
+    assert len(registry.speakers) == 2 and not registry.candidates
 
 
 def test_pending_person_is_competitor_for_ambiguous_known_match():
@@ -84,7 +85,10 @@ def test_averaged_candidate_is_rechecked_against_existing_person():
     # Both individual fragments are below the novelty threshold, but their
     # aggregate is not. This must not create another identity for a weak voice.
     assert registry.assign([[.29, radius * .6, radius * .8]], [1.2]) == [None]
-    assert len(registry.speakers) == 1 and not registry.candidates
+    assert len(registry.speakers) == 1 and registry.candidates[0].borderline
+    assert registry.candidates[0].consistent_observations == 1
+    # A return to the original voice must still win and cannot create a third person.
+    assert registry.assign([[1, 0, 0]], [1.2]) == ['speaker_1']
 
 
 def test_promoted_voice_retires_old_candidates_so_they_cannot_mute_it():
@@ -252,3 +256,30 @@ def test_resampling_preserves_duration():
     output = resample(wave, 48000, 16000)
     assert len(output) == 16000
     assert output.dtype == np.float32
+
+
+def test_unstable_gray_zone_never_promotes_from_duration_alone():
+    registry = SpeakerRegistry()
+    registry.assign([[1, 0, 0]], [1.2])
+    radius = np.sqrt(1 - .35 ** 2)
+    variants = [[.35, radius, 0], [.35, radius * .6, radius * .8]]
+    for i in range(12):
+        assert registry.assign([variants[i % 2]], [1.2]) == [None]
+    assert len(registry.speakers) == 1
+
+
+def test_repeated_subsecond_evidence_registers_without_single_fragment_registration():
+    registry = SpeakerRegistry()
+    registry.assign([[1, 0]], [1.2])
+    assert registry.assign([[0, 1]], [.8]) == [None]
+    assert registry.assign([[0, 1]], [.8]) == [None]
+    assert registry.assign([[0, 1]], [.8]) == ['speaker_2']
+
+
+def test_gray_candidates_do_not_block_known_voice_return():
+    registry = SpeakerRegistry()
+    registry.assign([[1, 0]], [1.2])
+    assert registry.assign([[.35, np.sqrt(1-.35**2)]], [1.2]) == [None]
+    # Similar to the candidate but still positively identifiable as the original.
+    assert registry.assign([[.65, np.sqrt(1-.65**2)]], [1.2]) == ['speaker_1']
+    assert not registry.candidates

@@ -27,15 +27,15 @@ def test_reopen_restores_identity_name_and_provisional_state(tmp_path):
     assert len(reopened.load_speakers()) == 1
 
 
-def test_unconfirmed_candidates_are_not_saved(tmp_path):
+def test_pending_features_survive_without_creating_profile_on_load(tmp_path):
     store = ProfileStore(tmp_path / 'people.sqlite3')
     registry = SpeakerRegistry(store=store)
     registry.assign([voice()], [1.2])
     assert registry.assign([voice(90)], [1.2]) == [None]
     assert len(registry.candidates) == 1
     restored = SpeakerRegistry(store=store)
-    assert not restored.candidates and len(restored.speakers) == 1
-    assert restored.assign([voice(90)], [1.2]) == [None]
+    assert len(restored.candidates) == 1 and len(restored.speakers) == 1
+    assert restored.assign([voice(90)], [1.2]) == ['speaker_2']
     assert restored.assign([voice(90)], [1.2]) == ['speaker_2']
 
 

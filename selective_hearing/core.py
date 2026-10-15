@@ -8,6 +8,8 @@ from scipy.signal import resample_poly
 from math import gcd
 import time
 
+from .feature_bank import FeatureBank
+
 
 def mono(audio):
     audio = np.asarray(audio, dtype=np.float32)
@@ -76,6 +78,24 @@ class VoiceCandidate:
     first_block: int
     last_block: int
     observations: int = 1
+    borderline: bool = False
+    consistent_observations: int = 1
+    recent_vectors: list = field(default_factory=list, repr=False)
+
+    def observe(self, vector, seconds, block, borderline):
+        self.vector = unit(self.vector * self.seconds + vector * seconds)
+        self.seconds += seconds
+        self.observations += 1
+        self.last_block = block
+        self.borderline |= borderline
+        self.recent_vectors = (self.recent_vectors + [vector.copy()])[-3:]
+        self.consistent_observations = 1
+        for count in range(2, len(self.recent_vectors) + 1):
+            tail = self.recent_vectors[-count:]
+            if all(float(a @ b) >= .75 for i, a in enumerate(tail) for b in tail[i + 1:]):
+                self.consistent_observations = count
+            else:
+                break
 
 
 class SpeakerRegistry:
@@ -101,6 +121,41 @@ class SpeakerRegistry:
         self.speakers = store.load_speakers() if store is not None else []
         self.candidates = []
         self.block = 0
+        self.decisions = []
+        self.discovery_ceiling = min(short_threshold, threshold)
+        self.feature_bank = FeatureBank(store.load_samples() if store is not None else ())
+        self.last_corrections = []
+        self._restore_candidates()
+
+    def _restore_candidates(self):
+        # Recent unresolved evidence survives an app restart. Reconstruct only
+        # candidates here: loading a profile must not create people by itself.
+        newest = max((s.batch_id for s in self.feature_bank.samples), default=0)
+        for sample in self.feature_bank.samples:
+            if sample.speaker_id is not None or sample.batch_id < newest - self.candidate_blocks:
+                continue
+            nearest = max(self._scores(sample.vector, self.speakers), default=-1.0)
+            if nearest >= self.discovery_ceiling:
+                continue
+            block = sample.batch_id - newest
+            matches = sorted(((float(sample.vector @ c.vector), c) for c in self.candidates),
+                             key=lambda pair: pair[0], reverse=True)
+            if matches and matches[0][0] >= self.candidate_threshold:
+                if matches[0][1].last_block == block:
+                    continue
+                if len(matches) > 1 and matches[0][0] - matches[1][0] < self.margin:
+                    continue
+                matches[0][1].observe(sample.vector, sample.seconds, block, nearest >= self.new_threshold)
+            else:
+                self.candidates.append(VoiceCandidate(sample.vector.copy(), sample.seconds, block, block,
+                    borderline=nearest >= self.new_threshold, recent_vectors=[sample.vector.copy()]))
+                self.candidates = self.candidates[-self.max_candidates:]
+        self._prune_candidates()
+
+    def _scores(self, vector, speakers):
+        if not self.learning:
+            return [speaker.similarity(vector) for speaker in speakers]
+        return self.feature_bank.scores(vector, speakers)
 
     def _register(self, vector, seconds, observations=1):
         vector = unit(vector)
@@ -109,51 +164,62 @@ class SpeakerRegistry:
         self.speakers.append(speaker)
         return speaker.id
 
+    def _discovery_result(self, status, identity=None, **details):
+        self.decisions.append({'status': status, **details})
+        return identity
+
     def _discover(self, vector, seconds):
-        if seconds < self.min_new_seconds:
-            return None
-        if not self.speakers:
-            return self._register(vector, seconds)
-        # A poor match is not evidence of a new person. Keep a wide uncertainty
-        # band between recognition and discovery, including for short windows.
-        if max(s.similarity(vector) for s in self.speakers) >= self.new_threshold:
-            return None
+        # Brief usable speech must accumulate rather than be discarded forever.
+        if seconds < min(0.75, self.min_new_seconds):
+            return self._discovery_result('short_speech')
+        if not self.speakers and seconds >= self.min_new_seconds:
+            identity = self._register(vector, seconds)
+            return self._discovery_result('created', identity)
+        nearest = max(self._scores(vector, self.speakers), default=-1.0)
+        # Above this ceiling the voice may be an existing speaker with an
+        # ambiguous assignment. Repetition alone must not duplicate that person.
+        if nearest >= self.discovery_ceiling:
+            return self._discovery_result('ambiguous_existing', best_similarity=nearest)
+        borderline = nearest >= self.new_threshold
         available = [(float(vector @ c.vector), c) for c in self.candidates
                      if c.last_block != self.block]
         available.sort(key=lambda item: item[0], reverse=True)
         if (available and available[0][0] >= self.candidate_threshold
                 and (len(available) == 1 or available[0][0] - available[1][0] >= self.margin)):
-            candidate = available[0][1]
-            candidate.vector = unit(candidate.vector * candidate.seconds + vector * seconds)
-            candidate.seconds += seconds
-            candidate.observations += 1
-            candidate.last_block = self.block
-            # Recheck the aggregated reference; never promote a candidate that
-            # now resembles an existing identity or a just-promoted candidate.
-            if max(s.similarity(candidate.vector) for s in self.speakers) >= self.new_threshold:
+            _, candidate = available[0]
+            candidate.observe(vector, seconds, self.block, borderline)
+            nearest = max(self._scores(candidate.vector, self.speakers), default=-1.0)
+            candidate.borderline |= borderline or nearest >= self.new_threshold
+            if nearest >= self.discovery_ceiling:
                 self.candidates.remove(candidate)
-                return None
-            if candidate.observations >= 2 and candidate.seconds >= 2 * self.min_new_seconds:
-                identity = self._register(candidate.vector, candidate.seconds, candidate.observations)
-                self.candidates.remove(candidate)
-                return identity
+                return self._discovery_result('ambiguous_existing', best_similarity=nearest)
         else:
-            # Duplicate separator outputs in one block cannot count as two
-            # sightings, nor occupy multiple slots for the same candidate.
+            # Two separator outputs within one block are not independent evidence.
             if any(float(vector @ c.vector) >= self.candidate_threshold for c in self.candidates):
-                return None
-            self.candidates.append(VoiceCandidate(vector, seconds, self.block, self.block))
+                return self._discovery_result('ambiguous_candidate')
+            candidate = VoiceCandidate(vector, seconds, self.block, self.block, borderline=borderline, recent_vectors=[vector.copy()])
+            self.candidates.append(candidate)
             self.candidates = self.candidates[-self.max_candidates:]
-        return None
+        needed = 3 if candidate.borderline else 2
+        seconds_needed = needed * self.min_new_seconds
+        observations = candidate.consistent_observations if candidate.borderline else candidate.observations
+        if observations >= needed and candidate.seconds >= seconds_needed:
+            identity = self._register(candidate.vector, candidate.seconds, candidate.observations)
+            self.candidates.remove(candidate)
+            return self._discovery_result('created', identity)
+        return self._discovery_result('confirming', observations=observations,
+                                      required_observations=needed, seconds=candidate.seconds,
+                                      required_seconds=seconds_needed, borderline=candidate.borderline)
 
     def assign(self, vectors, durations):
         if len(vectors) != len(durations) or len(vectors) > 2:
             raise ValueError("每块最多两路声音，特征和时长必须对应")
         self.block += 1
+        self.decisions = []
         self._prune_candidates()
         vectors = [unit(v) for v in vectors]
         known = list(self.speakers)
-        scores = np.array([[s.similarity(v) for s in known] for v in vectors])
+        scores = np.array([self._scores(v, known) for v in vectors])
         options = []
         for i, row in enumerate(scores):
             allowed = [None]
@@ -162,7 +228,7 @@ class SpeakerRegistry:
             threshold = self.short_threshold if durations[i] < 2.0 else self.threshold
             for j, score in enumerate(row):
                 others = [x for k, x in enumerate(row) if k != j]
-                others.extend(float(vectors[i] @ c.vector) for c in self.candidates)
+                others.extend(float(vectors[i] @ c.vector) for c in self.candidates if not c.borderline)
                 if score >= threshold and (not others or score - max(others) >= self.margin):
                     allowed.append(j)
             options.append(allowed)
@@ -179,16 +245,34 @@ class SpeakerRegistry:
             if choice is not None:
                 speaker = known[choice]
                 competitors = [float(x) for j, x in enumerate(scores[i]) if j != choice]
-                competitors.extend(float(vectors[i] @ c.vector) for c in self.candidates)
+                competitors.extend(float(vectors[i] @ c.vector) for c in self.candidates if not c.borderline)
                 learn = (self.learning and durations[i] >= 1.0 and scores[i, choice] >= 0.55
                          and (not competitors or scores[i, choice] - max(competitors) >= 0.15))
                 if self.store is not None:
                     self.store.record_match(speaker, vectors[i], durations[i], learn)
                 else:
                     speaker.observe(vectors[i], durations[i], learn)
+                self.decisions.append({'status': 'recognized', 'speaker_id': speaker.id})
+                # A reliable return to a known identity resolves its temporary
+                # drift candidates; those must not later become duplicates.
+                self.candidates = [c for c in self.candidates
+                                   if float(vectors[i] @ c.vector) < self.candidate_threshold]
                 result.append(speaker.id)
                 continue
             result.append(self._discover(vectors[i], durations[i]))
+        entries = [(v, seconds, identity) for v, seconds, identity in zip(vectors, durations, result)
+                   if seconds >= .75]
+        if self.store is not None and entries:
+            self.store.add_samples(entries)
+            self.feature_bank = FeatureBank(self.store.load_samples())
+        else:
+            for vector, seconds, identity in entries:
+                self.feature_bank.add(vector, seconds, identity, self.block)
+        self.last_corrections = self.feature_bank.reconcile(self.speakers) if self.learning else []
+        self.feature_bank.trim()
+        if self.store is not None and (entries or self.last_corrections):
+            self.store.correct_samples(self.last_corrections)
+            self.feature_bank = FeatureBank(self.store.load_samples())
         self._prune_candidates()
         return result
 
@@ -198,12 +282,14 @@ class SpeakerRegistry:
         # compete with their own registered identity on subsequent blocks.
         self.candidates = [c for c in self.candidates
                            if self.block - c.first_block <= self.candidate_blocks
-                           and all(s.similarity(c.vector) < self.new_threshold for s in self.speakers)]
+                           and max(self._scores(c.vector, self.speakers), default=-1.0) < self.discovery_ceiling]
 
     def snapshot(self):
         return [{"id": s.id, "ready": s.ready, "observations": s.observations,
                  "seconds": round(s.seconds, 2), "saved": self.store is not None,
-                 "learned_observations": s.learned_observations} for s in self.speakers]
+                 "learned_observations": s.learned_observations,
+                 "feature_samples": sum(row.speaker_id == s.id for row in self.feature_bank.samples)}
+                for s in self.speakers]
 
 
 @dataclass(frozen=True)

@@ -145,6 +145,9 @@ class App:
                        else '默认 3 秒；首次识别到人物即显示，后续新人需跨片段确认。')
         ttk.Label(controls, text=timing_note, foreground="#9b6500").pack(anchor="w", pady=(4, 0))
 
+        self.recognition_label = ttk.Label(controls, text='识别进度：等待音频', wraplength=900, foreground='#536378')
+        self.recognition_label.pack(anchor='w', pady=(4, 0))
+
         people = ttk.LabelFrame(main, text="3  选择收听目标", padding=12)
         people.pack(fill="x", pady=5)
         self.people_row = ttk.Frame(people)
@@ -164,7 +167,7 @@ class App:
         self.track_canvas.bind('<Configure>', lambda e: self.track_canvas.itemconfigure(grid_window, width=e.width))
         self.people_note = ttk.Label(people, text="可陆续识别多个人；当前模型同时最多分离两路人声，背景音暂不能独立分离。", foreground="#67758a", wraplength=910)
         self.people_note.pack(anchor="w", pady=8)
-        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；初始声纹另存，追加学习仅计可靠的后续片段。删除资料时会自动停止音频。',
+        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；样本指已归类的逐段声纹；追加学习指模板更新，待定样本可随后改归类。删除资料时会自动停止音频。',
                                       foreground='#536378', wraplength=900)
         self.profile_note.pack(anchor='w', pady=(0, 4))
         ttk.Label(people, text='绿框表示识别到该人正在说话；不受静音开关影响，随处理后的音频显示，有延迟。',
@@ -432,7 +435,7 @@ class App:
                                 highlightbackground='#cbd5e1', highlightcolor='#cbd5e1', padx=7, pady=5)
                 position = len(self.speaker_cards)
                 card.grid(row=position // 2, column=position % 2, sticky='w', padx=(0, 12), pady=4)
-                label = ttk.Label(card)
+                label = ttk.Label(card, wraplength=380)
                 self.speaker_names[identity] = tk.StringVar(value=speaker.get('name', f"说话人 {identity.split('_')[-1]}"))
                 name_box = ttk.Entry(card, textvariable=self.speaker_names[identity], width=22)
                 name_box.pack(anchor='w')
@@ -458,7 +461,9 @@ class App:
             if not speaker["ready"]:
                 text += " · 确认中"
             if speaker.get('saved'):
-                text += f" · 初始声纹已保存 · 追加学习 {speaker.get('learned_observations', 0)} 段"
+                text += f" · 已保存 · 样本 {speaker.get('feature_samples', 0)} 段 · 追加学习 {speaker.get('learned_observations', 0)} 段"
+                if not speaker.get('feature_samples'):
+                    text += ' · 初始声纹已保存'
             self.speaker_labels[identity].config(text=text)
         if speakers:
             self.people_note.config(text="名字可直接编辑，回车保存。新人需跨片段确认，避免重复建人；同时最多分离两路人声。")
@@ -538,6 +543,8 @@ class App:
             self.start_button.config(state="disabled")
             self.ai_check.config(state="disabled")
             self.window_box.config(state='disabled')
+            self.recognition_label.config(text=(f'识别进度：等待收满 {window_seconds:g} 秒音频'
+                                                if self.ai.get() else '识别进度：原声模式，未启用人声识别'))
             self.status.config(text=f"正在收音 · AI 每 {window_seconds:g} 秒处理一块" if self.ai.get() else "正在收音 · 原声测试（未启用分人）")
             if not self.ai.get():
                 self.people_note.config(text='当前是原声模式，不识别人。启用“自动识别人声并分离”后才会生成人物按钮。')
@@ -549,6 +556,7 @@ class App:
 
     def stop(self):
         self.pending_device_start = None
+        self.recognition_label.config(text='识别进度：已停止')
         self.update_speaking()
         self.auto_start_pending = False
         if self.startup_after is not None:
@@ -599,6 +607,8 @@ class App:
                     self.model_status.config(text="模型加载失败，可点击加载按钮重试。")
                     self.status.config(text=event["message"])
                 elif kind == "progress":
+                    if event.get('recognition_status'):
+                        self.recognition_label.config(text='识别进度：' + event['recognition_status'])
                     self.update_people(event["speakers"], event["active"])
                     if self.file_mode and "fraction" in event:
                         self.progress["value"] = event["fraction"]
