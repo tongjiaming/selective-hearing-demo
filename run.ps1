@@ -1,4 +1,4 @@
-﻿param([switch]$Check)
+﻿param([switch]$Check, [switch]$FileTest)
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $entryPoint = Join-Path $projectRoot 'selective_hearing\__main__.py'
@@ -24,4 +24,5 @@ if ($Check) {
     exit $LASTEXITCODE
 }
 # Resolve paths before starting, regardless of Explorer / shell working directory.
-Start-Process -FilePath $pythonw -ArgumentList '-m', 'selective_hearing' -WorkingDirectory $projectRoot
+$module = if ($FileTest) { 'selective_hearing.file_ui' } else { 'selective_hearing' }
+Start-Process -FilePath $pythonw -ArgumentList '-m', $module -WorkingDirectory $projectRoot

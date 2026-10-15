@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-15",
+  "scope": "Actual local models; short default-device capture at zero playback gain; public file import and named export. No microphone audio saved.",
+  "live": {
+    "auto_loaded_and_started": true,
+    "startup_seconds": 3.922,
+    "capture_seconds": 3.015,
+    "input_callbacks": 151,
+    "playback_gain": 0.0,
+    "input_stream_active": true,
+    "output_stream_active": true,
+    "airpods_quality_verified": false,
+    "stop_closed_both_streams": true
+  },
+  "file_test": {
+    "model_loaded": true,
+    "microphone_session": false,
+    "public_sample_seconds": 17.06,
+    "speakers": 2,
+    "name_survives_identification_update": true,
+    "rename_keeps_mute_state": true,
+    "exported_json_contains_custom_name": true,
+    "track_filenames_keep_internal_ids": true
+  }
+}
