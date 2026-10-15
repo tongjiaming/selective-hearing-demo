@@ -23,8 +23,18 @@ from validate_models import si_sdr
 
 def baseline_registry(ref):
     source = subprocess.check_output(['git', 'show', f'{ref}:selective_hearing/core.py'], cwd=ROOT)
-    module = types.ModuleType('_baseline_identity_core')
-    module.__package__ = 'selective_hearing'
+    package = types.ModuleType('_baseline_identity')
+    package.__path__ = []
+    sys.modules[package.__name__] = package
+    # Historical core code must not accidentally import today's feature bank.
+    if b'from .feature_bank import' in source:
+        feature_source = subprocess.check_output(['git', 'show', f'{ref}:selective_hearing/feature_bank.py'], cwd=ROOT)
+        features = types.ModuleType('_baseline_identity.feature_bank')
+        features.__package__ = package.__name__
+        sys.modules[features.__name__] = features
+        exec(compile(feature_source, f'{ref}/feature_bank.py', 'exec'), features.__dict__)
+    module = types.ModuleType('_baseline_identity.core')
+    module.__package__ = package.__name__
     sys.modules[module.__name__] = module
     exec(compile(source, f'{ref}/core.py', 'exec'), module.__dict__)
     return module.SpeakerRegistry

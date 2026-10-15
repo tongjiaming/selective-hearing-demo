@@ -12,6 +12,35 @@ def voice(angle=0, axis=1):
     return vector
 
 
+def test_update_resets_learning_but_restart_and_window_settings_survive(tmp_path):
+    path = tmp_path / 'people.sqlite3'
+    old = ProfileStore(path, revision='v1')
+    person = old.create(voice(), 1, 1.2)
+    old.add_samples([(voice(), 1.2, person.id), (voice(90), .5, None)])
+    old.set_window_seconds(1.5)
+    assert len(ProfileStore(path, revision='v1').load_samples()) == 2
+    updated = ProfileStore(path, revision='v2')
+    assert updated.learning_reset
+    assert not updated.load_speakers() and not updated.load_samples()
+    assert updated.window_seconds(3) == 1.5
+    with pytest.raises(ValueError, match='旧窗口不能再写入'):
+        old.create(voice(), 1, 1.2)
+    new = updated.create(voice(), 1, 1.2)
+    assert new.id != person.id and updated.summaries()[0]['name'] == '说话人 1'
+    reopened = ProfileStore(path, revision='v2')
+    assert not reopened.learning_reset and len(reopened.load_speakers()) == 1
+
+
+def test_legacy_learning_is_cleared_on_first_updated_launch(tmp_path):
+    path = tmp_path / 'people.sqlite3'
+    old = ProfileStore(path)
+    old.create(voice(), 1, 1.2)
+    with old.connection() as db:
+        db.execute("DELETE FROM metadata WHERE key='learning_revision'")
+    updated = ProfileStore(path)
+    assert updated.learning_reset and not updated.load_speakers()
+
+
 def test_reopen_restores_identity_name_and_provisional_state(tmp_path):
     path = tmp_path / 'people.sqlite3'
     store = ProfileStore(path)

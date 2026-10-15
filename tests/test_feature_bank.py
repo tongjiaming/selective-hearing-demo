@@ -23,6 +23,38 @@ def test_neighborhood_recovers_variant_without_one_outlier_taking_over():
     assert bank.scores(voice(70), [speaker])[0] > .85
 
 
+def test_repeated_weak_predictions_cannot_absorb_a_different_person(tmp_path):
+    store = ProfileStore(tmp_path / 'profiles.sqlite3')
+    registry = SpeakerRegistry(store=store)
+    registry.assign([voice(0)], [1.2])
+    # Old short-frame matching accepts these borderline observations. They
+    # must not become trusted votes for an unrelated 90-degree voice.
+    for _ in range(4):
+        registry.assign([voice(60)], [1.2])
+    again = SpeakerRegistry(store=ProfileStore(store.path))
+    assert again.assign([voice(90)], [1.2]) == [None]
+    assert again.assign([voice(90)], [1.2]) == ['speaker_2']
+    assert len(again.feature_bank.reference_samples(again.feature_bank.samples, again.speakers)) < len(again.feature_bank.samples)
+
+
+def test_weak_samples_do_not_relabel_history_or_short_samples_vote():
+    speakers = [Speaker('speaker_1', voice(0))]
+    bank = FeatureBank()
+    for _ in range(3):
+        bank.add(voice(60), 1.2, 'speaker_1')
+    pending = bank.add(voice(90), 1.2, None)
+    assert not bank.reconcile(speakers) and pending.speaker_id is None
+    short = FeatureBank()
+    for _ in range(3):
+        short.add(voice(40), .5, 'speaker_1')
+    assert short.scores(voice(70), speakers)[0] < .45
+
+
+def test_old_learned_centroid_does_not_override_a_weak_anchor_alone():
+    speaker = Speaker('speaker_1', voice(0), learned_vector=voice(45))
+    assert speaker.similarity(voice(90)) < .45
+
+
 def test_history_can_move_to_new_cluster_with_names_and_ids_preserved(tmp_path):
     store = ProfileStore(tmp_path / 'profiles.sqlite3')
     a, b = store.create(voice(0), 1, 1), store.create(voice(90), 1, 1)

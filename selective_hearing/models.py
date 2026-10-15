@@ -128,6 +128,11 @@ class Processor:
             if decision['status'] == 'confirming':
                 messages.append(f"新声音确认中：稳定证据 {decision['observations']}/{decision['required_observations']}，"
                                 f"有效语音 {decision['seconds']:.1f}/{decision['required_seconds']:.1f} 秒")
+                if decision['observations'] < decision['required_observations']:
+                    if decision.get('collected_observations', 1) > decision['observations']:
+                        messages.append('已收到多段人声，但声纹一致性不足；可尝试加长分析窗口')
+                    elif decision['observations'] == 1:
+                        messages.append('已检出人声，等待相似的跨窗片段')
             elif decision['status'].startswith('ambiguous'):
                 messages.append('有声音暂无法区分归属，特征已暂存')
             elif decision['status'] == 'short_speech':

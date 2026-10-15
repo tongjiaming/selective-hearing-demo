@@ -43,8 +43,28 @@ class FeatureBank:
                 counts[key] = counts.get(key, 0) + 1
         self.samples = list(reversed(kept))
 
+    @staticmethod
+    def reference_samples(samples, speakers):
+        """Predicted labels alone are not evidence that a sample is reliable.
+
+        Use only sufficiently long samples close to their ORIGINAL anchor,
+        with a clear lead over other anchors. Never let a weak prediction vote
+        itself into stronger future predictions through the learned centroid.
+        """
+        accepted = []
+        for sample in samples:
+            if sample.speaker_id is None or sample.seconds < 1.0:
+                continue
+            scores = {speaker.id: float(sample.vector @ speaker.vector) for speaker in speakers}
+            own = scores.get(sample.speaker_id, -1.0)
+            others = [score for identity, score in scores.items() if identity != sample.speaker_id]
+            if own >= .55 and (not others or own - max(others) >= .15):
+                accepted.append(sample)
+        return accepted
+
     def scores(self, vector, speakers, exclude_id=None, samples=None):
         samples = self.samples if samples is None else samples
+        samples = self.reference_samples(samples, speakers)
         result = []
         for speaker in speakers:
             neighbors = sorted((float(vector @ s.vector) for s in samples
@@ -69,8 +89,9 @@ class FeatureBank:
         # Python dot products when the feature memory is full.
         vectors = np.stack([sample.vector for sample in snapshot])
         similarities = vectors @ vectors.T
+        reference_ids = {sample.id for sample in self.reference_samples(snapshot, speakers)}
         groups = {speaker.id: np.array([i for i, sample in enumerate(snapshot)
-                                        if sample.speaker_id == speaker.id], dtype=int) for speaker in speakers}
+                                        if sample.speaker_id == speaker.id and sample.id in reference_ids], dtype=int) for speaker in speakers}
         changes = []
         for index, sample in enumerate(snapshot):
             votes, scores = [], {}

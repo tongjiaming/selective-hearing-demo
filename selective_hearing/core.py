@@ -46,15 +46,18 @@ class Speaker:
     learned_observations: int = 0
 
     def similarity(self, vector):
-        return max(float(vector @ self.vector),
-                   float(vector @ self.learned_vector) if self.learned_vector is not None else -1.0)
+        anchor = float(vector @ self.vector)
+        # A drifting learned centroid cannot overrule a weak anchor match on
+        # its own. Wider voice variation needs multiple reliable neighbors.
+        return max(anchor, float(vector @ self.learned_vector)
+                   if self.learned_vector is not None and anchor >= .35 else -1.0)
 
     def observe(self, vector, seconds, learn):
         self.observations += 1
         self.seconds += seconds
         # Keep the original reference intact. Learning cannot walk indefinitely
         # toward an unrelated voice through a chain of borderline matches.
-        if not learn or float(vector @ self.vector) < 0.35 or self.similarity(vector) < 0.55:
+        if not learn or float(vector @ self.vector) < 0.55 or self.similarity(vector) < 0.55:
             return
         center = self.learned_vector if self.learned_vector is not None else self.vector
         weight = min(self.learned_seconds, 20.0) if self.learned_vector is not None else 2.0
@@ -209,7 +212,8 @@ class SpeakerRegistry:
             return self._discovery_result('created', identity)
         return self._discovery_result('confirming', observations=observations,
                                       required_observations=needed, seconds=candidate.seconds,
-                                      required_seconds=seconds_needed, borderline=candidate.borderline)
+                                      required_seconds=seconds_needed, borderline=candidate.borderline,
+                                      collected_observations=candidate.observations)
 
     def assign(self, vectors, durations):
         if len(vectors) != len(durations) or len(vectors) > 2:

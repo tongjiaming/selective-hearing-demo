@@ -59,6 +59,8 @@ class App:
             self.profile_note.config(text=f'人物资料加载失败：{self.profile_error}；原文件未覆盖。')
         else:
             self.restore_people()
+            if self.profile_store.learning_reset:
+                self.profile_note.config(text='程序已更新：旧人物、声纹样本和学习结果已清空，将重新识别人；分析窗口设置保留。')
         self.refresh_devices()
         self.device_after = self.root.after(4000, self.watch_devices)
         self.poll_after = self.root.after(100, self.poll)

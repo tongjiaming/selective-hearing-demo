@@ -9,6 +9,7 @@ import numpy as np
 from .core import Speaker, unit
 from .feature_bank import VoiceSample, MAX_SAMPLES, MAX_PER_SPEAKER, MAX_PENDING, MIN_SPEECH_SECONDS
 from .model_assets import ASSETS
+from .revision import learning_revision
 
 MODEL_KEY = 'ecapa-fbank80-sentence-mean-v1:' + ASSETS['ecapa.ckpt']['sha256']
 
@@ -30,16 +31,24 @@ def default_profile_path(file_mode=False):
 
 
 class ProfileStore:
-    def __init__(self, path):
+    def __init__(self, path, *, revision=None):
         self.path = Path(path)
+        self.learning_reset = False
+        revision = learning_revision() if revision is None else revision
+        self.revision = revision
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as db:
             if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                 raise ValueError('人物资料库损坏；请保留原文件并检查，未覆盖资料。')
             db.execute('CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+            db.execute('BEGIN IMMEDIATE')
+            previous = db.execute("SELECT value FROM metadata WHERE key='learning_revision'").fetchone()
+            changed = previous is None or previous[0] != revision
             expected = {'schema': '1', 'model': MODEL_KEY}
             for key, value in expected.items():
                 db.execute('INSERT OR IGNORE INTO metadata VALUES (?, ?)', (key, value))
+                if key == 'model' and changed:
+                    db.execute('UPDATE metadata SET value=? WHERE key=?', (value, key))
                 if db.execute('SELECT value FROM metadata WHERE key=?', (key,)).fetchone()[0] != value:
                     raise ValueError('人物资料版本或声纹模型不兼容，未覆盖原资料。')
             db.execute('''CREATE TABLE IF NOT EXISTS speakers (
@@ -54,6 +63,13 @@ class ProfileStore:
             db.execute('CREATE TABLE IF NOT EXISTS voice_samples ('
                        'id INTEGER PRIMARY KEY AUTOINCREMENT, vector BLOB NOT NULL, seconds REAL NOT NULL, '
                        'speaker_id INTEGER REFERENCES speakers(id) ON DELETE CASCADE, batch_id INTEGER NOT NULL DEFAULT 0)')
+            if changed:
+                self.learning_reset = bool(db.execute('SELECT COUNT(*) FROM speakers').fetchone()[0]
+                                           or db.execute('SELECT COUNT(*) FROM voice_samples').fetchone()[0])
+                db.execute('PRAGMA secure_delete=ON')
+                db.execute('DELETE FROM voice_samples')
+                db.execute('DELETE FROM speakers')
+                db.execute("INSERT OR REPLACE INTO metadata VALUES ('learning_revision', ?)", (revision,))
             if 'display_number' not in {row[1] for row in db.execute('PRAGMA table_info(speakers)')}:
                 db.execute('ALTER TABLE speakers ADD COLUMN display_number INTEGER')
             # Migrate old profiles once, preserving custom names and internal IDs.
@@ -82,6 +98,11 @@ class ProfileStore:
         while number in used:
             number += 1
         return number
+
+    def check_revision(self, db):
+        row = db.execute("SELECT value FROM metadata WHERE key='learning_revision'").fetchone()
+        if row is None or row[0] != self.revision:
+            raise ValueError('程序已更新并重置学习库，旧窗口不能再写入，请重新启动。')
 
     @staticmethod
     def number(identity):
@@ -136,12 +157,15 @@ class ProfileStore:
             raise ValueError('无效人声样本')
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             batch_id = db.execute('SELECT COALESCE(MAX(batch_id), 0) + 1 FROM voice_samples').fetchone()[0]
             db.executemany('INSERT INTO voice_samples (vector, seconds, speaker_id, batch_id) VALUES (?, ?, ?, ?)',
                            [(*row, batch_id) for row in rows])
 
     def correct_samples(self, changes):
         with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             # Compare-and-set avoids overwriting another app instance's later
             # correction. IDs are allocated by SQLite, never by each process.
             for number, previous, current in changes:
@@ -174,6 +198,8 @@ class ProfileStore:
     def set_window_seconds(self, value):
         seconds = validate_window_seconds(value)
         with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             db.execute("INSERT OR REPLACE INTO metadata VALUES ('window_seconds', ?)", (str(seconds),))
         return seconds
 
@@ -183,6 +209,7 @@ class ProfileStore:
             raise ValueError('无效声纹统计')
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             display = self.next_display_number(db)
             cursor = db.execute('INSERT INTO speakers (name, vector, observations, seconds, display_number) VALUES (?, ?, ?, ?, ?)',
                                 (f'说话人 {display}', vector.astype('<f4').tobytes(), observations, seconds, display))
@@ -193,6 +220,7 @@ class ProfileStore:
         # Serialize read/modify/write across processes without overwriting names.
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             row = db.execute('SELECT observations, seconds, learned_vector, learned_seconds, learned_observations FROM speakers WHERE id=?',
                              (self.number(speaker.id),)).fetchone()
             if row is None:
@@ -214,6 +242,7 @@ class ProfileStore:
         name = ' '.join(name.split())[:40]
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             row = db.execute('SELECT display_number FROM speakers WHERE id=?', (self.number(identity),)).fetchone()
             if row is None:
                 raise ValueError('人物资料不存在，名字未保存。')
@@ -224,5 +253,7 @@ class ProfileStore:
 
     def delete(self, identity):
         with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
             db.execute('PRAGMA secure_delete=ON')
             db.execute('DELETE FROM speakers WHERE id=?', (self.number(identity),))
