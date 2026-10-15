@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer, resample, unit
+from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer, OutputControl, resample, unit
 
 
 def test_output_permutation_does_not_swap_identity():
@@ -16,8 +16,41 @@ def test_output_permutation_does_not_swap_identity():
 def test_unknown_voice_never_forced_to_selected_identity():
     registry = SpeakerRegistry()
     registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
-    assert registry.assign([[0, 0, 1]], [2]) == [None]
-    assert len(registry.speakers) == 2
+    assert registry.assign([[0, 0, 1]], [2]) == ['speaker_3']
+    assert len(registry.speakers) == 3
+    assert registry.assign([[0, 0, 1], [1, 0, 0]], [2, 2]) == ['speaker_3', 'speaker_1']
+
+
+def test_short_unmatched_fragment_does_not_create_extra_person():
+    registry = SpeakerRegistry()
+    registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
+    assert registry.assign([[0, 0, 1]], [.8]) == [None]
+    assert registry.assign([[1, 0, 0]], [.8]) == ['speaker_1']  # can still match an existing identity
+    assert registry.assign([[0, 0, 1]], [1.2]) == ['speaker_3']
+
+
+def test_independent_tracks_keep_other_choices_and_missing_tracks_silent():
+    control = OutputControl()
+    packet = AudioPacket(np.full(5, .9, np.float32), {
+        'speaker_1': np.full(5, .1, np.float32),
+        'speaker_2': np.full(5, .2, np.float32),
+        'speaker_3': np.full(5, .3, np.float32)})
+    control.set_track('speaker_1', False)
+    np.testing.assert_allclose(packet.select(control.get()[0]), .5)
+    snapshot = control.get()[0]
+    control.set_track('speaker_2', False)
+    control.set_track('speaker_1', True)
+    np.testing.assert_allclose(packet.select(control.get()[0]), .4)  # listening to A keeps B muted
+    np.testing.assert_allclose(packet.select(snapshot), .5)  # callback snapshot is immutable
+    control.set(mode='mute')
+    control.set_track('speaker_1', True)
+    assert not control.track_enabled('speaker_4')
+    np.testing.assert_allclose(packet.select(control.get()[0]), .1)
+    packet.tracks.pop('speaker_1')
+    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)  # no original/background fallback
+    control.set(mode='all')
+    assert control.track_enabled('speaker_4')
+    np.testing.assert_allclose(packet.select(control.get()[0]), .9)
 
 
 def test_two_simultaneous_tracks_cannot_share_identity():

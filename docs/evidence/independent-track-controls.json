@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-15",
+  "input_sha256": "154be139cd8d7221abd759d284aeb2aac7bb1e03fe8000641e85569461dfe883",
+  "real_model_discovered_ids": [
+    "speaker_1",
+    "speaker_2"
+  ],
+  "real_model_speakers": [
+    {
+      "id": "speaker_1",
+      "ready": true,
+      "observations": 4,
+      "seconds": 14.99
+    },
+    {
+      "id": "speaker_2",
+      "ready": true,
+      "observations": 3,
+      "seconds": 10.96
+    }
+  ],
+  "listen_a_and_b_sums_both": true,
+  "listen_a_preserves_b_muted": true,
+  "all_tracks_disabled_outputs_silence": true,
+  "background_separation_supported": false,
+  "three_simultaneous_speakers_validated": false,
+  "microphone_opened": false,
+  "multi_person_ui_layout": {
+    "required_height_with_stats": 958,
+    "screen_height": 1080,
+    "scroll_content_height": 288,
+    "viewport_height": 80
+  },
+  "minimum_new_identity_speech_seconds": 1.0,
+  "known_fixture_speakers": 2,
+  "regression_note": "Without a minimum enrollment duration the final 0.8 s unmatched segment was misregistered as a third candidate; with the 1.0 s gate the same two-speaker fixture has two identities. This does not establish general multi-speaker accuracy."
+}

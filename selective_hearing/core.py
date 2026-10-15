@@ -45,16 +45,17 @@ class Speaker:
 
 
 class SpeakerRegistry:
-    """Session-only identities, at most two; unmatched audio is never forced.
+    """Session-only identities; each separator block still has at most two sources.
 
     Joint one-to-one assignment handles separator output permutations. New
     identities are selectable immediately; two independent chunks confirm them. References
     remain fixed to avoid gradual contamination by separation artifacts.
     """
-    def __init__(self, threshold=0.55, new_threshold=0.40, margin=0.08):
+    def __init__(self, threshold=0.55, new_threshold=0.40, margin=0.08, min_new_seconds=1.0):
         self.threshold = threshold
         self.new_threshold = new_threshold
         self.margin = margin
+        self.min_new_seconds = min_new_seconds
         self.speakers = []
 
     def assign(self, vectors, durations):
@@ -89,7 +90,7 @@ class SpeakerRegistry:
                 continue
             # Check newly created identities too; do not duplicate one voice.
             similarities = [float(vectors[i] @ s.vector) for s in self.speakers]
-            if len(self.speakers) < 2 and (not similarities or max(similarities) < self.new_threshold):
+            if durations[i] >= self.min_new_seconds and (not similarities or max(similarities) < self.new_threshold):
                 speaker = Speaker(f"speaker_{len(self.speakers) + 1}", vectors[i], seconds=durations[i])
                 self.speakers.append(speaker)
                 result.append(speaker.id)
@@ -100,6 +101,16 @@ class SpeakerRegistry:
     def snapshot(self):
         return [{"id": s.id, "ready": s.ready, "observations": s.observations,
                  "seconds": round(s.seconds, 2)} for s in self.speakers]
+
+
+@dataclass(frozen=True)
+class TrackSelection:
+    """Immutable snapshot read by the audio callback, with independent overrides."""
+    default_enabled: bool = True
+    overrides: tuple = ()
+
+    def enabled(self, identity):
+        return dict(self.overrides).get(identity, self.default_enabled)
 
 
 @dataclass
@@ -113,6 +124,12 @@ class AudioPacket:
 
     def slice(self, mode, start, end):
         """Read only the callback-sized region, including for mute/missing IDs."""
+        if isinstance(mode, TrackSelection):
+            result = np.zeros(end - start, np.float32)
+            for identity, track in self.tracks.items():
+                if mode.enabled(identity):
+                    result += track[start:end]
+            return result
         if mode.startswith('exclude:'):
             excluded = mode.split(':', 1)[1]
             result = np.zeros(end - start, np.float32)
@@ -142,6 +159,20 @@ class OutputControl:
     def get(self):
         with self._lock:
             return self.mode, self.gain
+
+    def set_track(self, identity, enabled):
+        with self._lock:
+            selection = self.mode if isinstance(self.mode, TrackSelection) else TrackSelection(
+                default_enabled=self.mode == 'all')
+            overrides = dict(selection.overrides)
+            overrides[identity] = bool(enabled)
+            self.mode = TrackSelection(selection.default_enabled, tuple(overrides.items()))
+
+    def track_enabled(self, identity):
+        with self._lock:
+            if isinstance(self.mode, TrackSelection):
+                return self.mode.enabled(identity)
+            return self.mode == 'all'
 
 
 class PlaybackBuffer:

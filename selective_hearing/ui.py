@@ -15,7 +15,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Selective Hearing · 选择听谁说话")
-        root.geometry("1000x940+80+30")
+        root.geometry("1000x980+80+30")
         root.minsize(860, 900)
         root.configure(bg="#eef2f6")
         self.events = Queue()
@@ -46,12 +46,13 @@ class App:
         style.configure("TFrame", background="#eef2f6")
         style.configure("TLabel", background="#eef2f6", font=("Microsoft YaHei UI", 10))
         style.configure("TButton", font=("Microsoft YaHei UI", 10), padding=8)
+        style.configure('Selected.TButton', background='#c7e7d4', foreground='#17482a')
         style.configure("TLabelframe", background="#eef2f6")
         style.configure("TLabelframe.Label", background="#eef2f6", font=("Microsoft YaHei UI", 10, "bold"))
-        main = ttk.Frame(self.root, padding=22)
+        main = ttk.Frame(self.root, padding=16)
         main.pack(fill="both", expand=True)
         ttk.Label(main, text="选择听谁说话", font=("Microsoft YaHei UI", 24, "bold")).pack(anchor="w")
-        ttk.Label(main, text="Windows 本地实验版  ·  两人场景  ·  打开界面不会自动收音", foreground="#536378").pack(anchor="w", pady=(4, 14))
+        ttk.Label(main, text="Windows 本地实验版  ·  每人独立开关  ·  打开界面不会自动收音", foreground="#536378").pack(anchor="w", pady=(4, 14))
 
         source = ttk.LabelFrame(main, text="1  音频设备", padding=12)
         source.pack(fill="x", pady=5)
@@ -89,11 +90,22 @@ class App:
         people.pack(fill="x", pady=5)
         self.people_row = ttk.Frame(people)
         self.people_row.pack(fill="x")
-        ttk.Button(self.people_row, text="全部听", command=lambda: self.choose("all")).pack(side="left", padx=(0, 8))
+        ttk.Button(self.people_row, text="全部听（原声）", command=lambda: self.choose("all")).pack(side="left", padx=(0, 8))
         ttk.Button(self.people_row, text="全部静音", command=lambda: self.choose("mute")).pack(side="left", padx=(0, 8))
-        self.people_note = ttk.Label(people, text="开始收音后，首次识别到说话人即显示控制按钮；暂最多两人。", foreground="#67758a")
+        self.track_area = ttk.Frame(people)
+        self.track_canvas = tk.Canvas(self.track_area, height=80, highlightthickness=0, bg='#eef2f6')
+        scrollbar = ttk.Scrollbar(self.track_area, orient='vertical', command=self.track_canvas.yview)
+        scrollbar.pack(side='right', fill='y')
+        self.track_canvas.pack(side='left', fill='x', expand=True)
+        self.track_canvas.configure(yscrollcommand=scrollbar.set)
+        self.track_grid = ttk.Frame(self.track_canvas)
+        grid_window = self.track_canvas.create_window((0, 0), window=self.track_grid, anchor='nw')
+        self.track_grid.columnconfigure((0, 1), weight=1)
+        self.track_grid.bind('<Configure>', lambda _: self.track_canvas.configure(scrollregion=self.track_canvas.bbox('all')))
+        self.track_canvas.bind('<Configure>', lambda e: self.track_canvas.itemconfigure(grid_window, width=e.width))
+        self.people_note = ttk.Label(people, text="可陆续识别多个人；当前模型同时最多分离两路人声，背景音暂不能独立分离。", foreground="#67758a", wraplength=910)
         self.people_note.pack(anchor="w", pady=8)
-        self.mode_label = ttk.Label(people, text="当前：全部听", font=("Microsoft YaHei UI", 11, "bold"))
+        self.mode_label = ttk.Label(people, text="当前：全部原声", font=("Microsoft YaHei UI", 11, "bold"))
         self.mode_label.pack(anchor="w")
         gain_row = ttk.Frame(people)
         gain_row.pack(fill="x", pady=(8, 0))
@@ -192,30 +204,48 @@ class App:
         self.speaker_cards.clear()
         self.speaker_labels.clear()
         self.speaker_mutes.clear()
+        self.track_area.pack_forget()
         # A new source is a new identity session; a prior target must not carry over.
         self.choose("all")
         self.people_note.config(text="等待人声。首次识别即可选择，身份确认会继续进行。")
 
     def choose(self, mode):
         self.control.set(mode=mode)
-        label = {"all": "全部听", "mute": "全部静音"}.get(mode, "只听说话人 " + mode.split("_")[-1])
-        if mode.startswith('exclude:'):
-            label = '不听说话人 ' + mode.split('_')[-1]
-        self.mode_label.config(text=f"当前：{label}")
+        self.refresh_track_controls()
+
+    def set_person(self, identity, enabled):
+        self.control.set_track(identity, enabled)
+        self.refresh_track_controls()
+
+    def refresh_track_controls(self):
+        mode, _ = self.control.get()
+        for identity in self.speaker_buttons:
+            enabled = self.control.track_enabled(identity)
+            self.speaker_buttons[identity].configure(style='Selected.TButton' if enabled else 'TButton')
+            self.speaker_mutes[identity].configure(style='TButton' if enabled else 'Selected.TButton')
+        if isinstance(mode, str):
+            label = '全部原声' if mode == 'all' else '全部静音'
+        else:
+            count = sum(mode.enabled(identity) for identity in self.speaker_buttons)
+            label = f'听 {count} 人 · 不听 {len(self.speaker_buttons) - count} 人'
+            label += ' · 新人默认听' if mode.default_enabled else ' · 新人默认不听'
+        self.mode_label.config(text='当前：' + label)
 
     def update_people(self, speakers, active=()):
         for speaker in speakers:
             identity = speaker["id"]
             if identity not in self.speaker_buttons:
-                card = ttk.Frame(self.people_row)
-                card.pack(side='left', padx=(0, 12))
+                self.track_area.pack(fill='x', before=self.people_note, pady=(8, 0))
+                card = ttk.Frame(self.track_grid)
+                position = len(self.speaker_cards)
+                card.grid(row=position // 2, column=position % 2, sticky='w', padx=(0, 12), pady=4)
                 label = ttk.Label(card)
                 label.pack(anchor='w')
                 row = ttk.Frame(card)
                 row.pack()
-                button = ttk.Button(row, text='只听他', command=lambda key=identity: self.choose(key))
+                button = ttk.Button(row, text='听他', command=lambda key=identity: self.set_person(key, True))
                 button.pack(side='left', padx=(0, 4))
-                mute = ttk.Button(row, text='不听他', command=lambda key=identity: self.choose('exclude:' + key))
+                mute = ttk.Button(row, text='不听他', command=lambda key=identity: self.set_person(key, False))
                 mute.pack(side='left')
                 self.speaker_buttons[identity] = button
                 self.speaker_cards[identity] = card
@@ -227,9 +257,10 @@ class App:
                 text += " · 确认中"
             self.speaker_labels[identity].config(text=text)
         if speakers:
-            self.people_note.config(text="“确认中”也可以选择，身份可能修正或误判；不听某人时仅播放其他已识别的人声。")
+            self.people_note.config(text="每人独立开关，绿色表示当前选择。“确认中”可能误判；同时最多分离两路人声，背景音暂不能独立分离。")
         else:
             self.people_note.config(text="尚未识别到足够清晰的人声。请查看下方输入电平，并确认麦克风选择。")
+        self.refresh_track_controls()
 
     def start_live(self):
         try:

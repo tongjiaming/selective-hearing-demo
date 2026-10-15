@@ -59,17 +59,47 @@ def test_ui_opens_without_audio_and_preserves_mute(monkeypatch):
         assert str(app.speaker_buttons["speaker_1"]["state"]) == "normal"
         assert '确认中' in app.speaker_labels['speaker_1']['text']
         app.speaker_buttons['speaker_1'].invoke()
-        assert app.control.get()[0] == 'speaker_1'
+        assert app.control.track_enabled('speaker_1')
         app.speaker_mutes['speaker_1'].invoke()
-        assert app.control.get()[0] == 'exclude:speaker_1'
+        assert not app.control.track_enabled('speaker_1')
         app.update_people([{"id": "speaker_1", "ready": True}])
         assert len(app.speaker_cards) == 1
         assert '确认中' not in app.speaker_labels['speaker_1']['text']
         app.speaker_buttons["speaker_1"].invoke()
-        assert app.control.get()[0] == "speaker_1"
+        assert app.control.track_enabled('speaker_1')
         app.reset_people()
         assert not app.speaker_buttons
         assert not app.speaker_cards and not app.speaker_mutes
         assert app.control.get()[0] == "all"
+    finally:
+        app.close()
+
+
+def test_multiple_people_have_independent_controls_and_scrollable_cards(monkeypatch):
+    monkeypatch.setattr('selective_hearing.ui.devices', lambda **kwargs: [])
+    root = tk.Tk()
+    root.withdraw()
+    app = App(root)
+    try:
+        app.update_people([{'id': f'speaker_{i}', 'ready': False} for i in range(1, 9)])
+        app.speaker_mutes['speaker_2'].invoke()
+        app.speaker_mutes['speaker_3'].invoke()
+        app.speaker_buttons['speaker_1'].invoke()
+        assert app.speaker_buttons['speaker_1']['text'] == '听他'
+        assert app.control.track_enabled('speaker_1')
+        assert not app.control.track_enabled('speaker_2')
+        assert not app.control.track_enabled('speaker_3')
+        assert app.control.track_enabled('speaker_4')
+        assert len(app.speaker_cards) == 8
+        root.update_idletasks()
+        assert app.track_grid.winfo_reqheight() > int(app.track_canvas['height'])
+        app.choose('mute')
+        app.speaker_buttons['speaker_2'].invoke()
+        app.update_people([{'id': 'speaker_9', 'ready': False}])
+        assert app.control.track_enabled('speaker_2')
+        assert not app.control.track_enabled('speaker_9')
+        assert app.speaker_buttons['speaker_2']['style'] == 'Selected.TButton'
+        app.reset_people()
+        assert not app.track_area.winfo_manager()
     finally:
         app.close()
