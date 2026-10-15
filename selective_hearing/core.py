@@ -285,6 +285,8 @@ class SpeakerRegistry:
                            and max(self._scores(c.vector, self.speakers), default=-1.0) < self.discovery_ceiling]
 
     def snapshot(self):
+        if self.store is not None:
+            return self.store.summaries()
         return [{"id": s.id, "ready": s.ready, "observations": s.observations,
                  "seconds": round(s.seconds, 2), "saved": self.store is not None,
                  "learned_observations": s.learned_observations,

@@ -457,7 +457,7 @@ class App:
                 self.speaker_cards[identity] = card
                 self.speaker_labels[identity] = label
                 self.speaker_mutes[identity] = mute
-            text = f"编号 {identity.split('_')[-1]}"
+            text = f"编号 {speaker.get('display_number', identity.split('_')[-1])}"
             if not speaker["ready"]:
                 text += " · 确认中"
             if speaker.get('saved'):
@@ -491,7 +491,7 @@ class App:
         self.speaker_names[identity].set(value or f"说话人 {identity.split('_')[-1]}")
         if identity in self.saved_ids:
             try:
-                self.profile_store.rename(identity, self.speaker_names[identity].get())
+                self.speaker_names[identity].set(self.profile_store.rename(identity, value))
             except Exception as exc:
                 self.profile_note.config(text=f'名字未保存：{exc}')
                 return False

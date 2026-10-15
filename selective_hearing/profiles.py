@@ -54,6 +54,14 @@ class ProfileStore:
             db.execute('CREATE TABLE IF NOT EXISTS voice_samples ('
                        'id INTEGER PRIMARY KEY AUTOINCREMENT, vector BLOB NOT NULL, seconds REAL NOT NULL, '
                        'speaker_id INTEGER REFERENCES speakers(id) ON DELETE CASCADE, batch_id INTEGER NOT NULL DEFAULT 0)')
+            if 'display_number' not in {row[1] for row in db.execute('PRAGMA table_info(speakers)')}:
+                db.execute('ALTER TABLE speakers ADD COLUMN display_number INTEGER')
+            # Migrate old profiles once, preserving custom names and internal IDs.
+            for number, name in db.execute('SELECT id, name FROM speakers WHERE display_number IS NULL ORDER BY id').fetchall():
+                display = self.next_display_number(db)
+                db.execute('UPDATE speakers SET display_number=?, name=? WHERE id=?',
+                           (display, f'说话人 {display}' if name == f'说话人 {number}' else name, number))
+            db.execute('CREATE UNIQUE INDEX IF NOT EXISTS speaker_display_number ON speakers(display_number)')
         self.load_speakers()  # Validate before the application starts capture.
         self.load_samples()
 
@@ -66,6 +74,14 @@ class ProfileStore:
                 yield db
         finally:
             db.close()
+
+    @staticmethod
+    def next_display_number(db):
+        used = {row[0] for row in db.execute('SELECT display_number FROM speakers')}
+        number = 1
+        while number in used:
+            number += 1
+        return number
 
     @staticmethod
     def number(identity):
@@ -143,12 +159,12 @@ class ProfileStore:
 
     def summaries(self):
         with self.connection() as db:
-            rows = db.execute('SELECT id, name, observations, seconds, learned_observations FROM speakers ORDER BY id').fetchall()
+            rows = db.execute('SELECT id, name, observations, seconds, learned_observations, display_number FROM speakers ORDER BY id').fetchall()
             counts = dict(db.execute('SELECT speaker_id, COUNT(*) FROM voice_samples GROUP BY speaker_id'))
         return [{'id': f'speaker_{n}', 'name': name, 'observations': observations,
                  'seconds': seconds, 'ready': observations >= 2 and seconds >= 1.5, 'saved': True,
-                 'learned_observations': learned, 'feature_samples': counts.get(n, 0)}
-                for n, name, observations, seconds, learned in rows]
+                 'learned_observations': learned, 'feature_samples': counts.get(n, 0), 'display_number': display}
+                for n, name, observations, seconds, learned, display in rows]
 
     def window_seconds(self, default):
         with self.connection() as db:
@@ -166,10 +182,11 @@ class ProfileStore:
         if observations < 1 or not math.isfinite(seconds) or seconds < 0:
             raise ValueError('无效声纹统计')
         with self.connection() as db:
-            cursor = db.execute('INSERT INTO speakers (name, vector, observations, seconds) VALUES (?, ?, ?, ?)',
-                                ('说话人', vector.astype('<f4').tobytes(), observations, seconds))
+            db.execute('BEGIN IMMEDIATE')
+            display = self.next_display_number(db)
+            cursor = db.execute('INSERT INTO speakers (name, vector, observations, seconds, display_number) VALUES (?, ?, ?, ?, ?)',
+                                (f'说话人 {display}', vector.astype('<f4').tobytes(), observations, seconds, display))
             number = cursor.lastrowid
-            db.execute('UPDATE speakers SET name=? WHERE id=?', (f'说话人 {number}', number))
         return Speaker(f'speaker_{number}', vector, observations, seconds)
 
     def record_match(self, speaker, vector, seconds, learn):
@@ -194,10 +211,16 @@ class ProfileStore:
         speaker.learned_seconds, speaker.learned_observations = current.learned_seconds, current.learned_observations
 
     def rename(self, identity, name):
-        name = ' '.join(name.split())[:40] or f'说话人 {self.number(identity)}'
+        name = ' '.join(name.split())[:40]
         with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT display_number FROM speakers WHERE id=?', (self.number(identity),)).fetchone()
+            if row is None:
+                raise ValueError('人物资料不存在，名字未保存。')
+            name = name or f'说话人 {row[0]}'
             if db.execute('UPDATE speakers SET name=? WHERE id=?', (name, self.number(identity))).rowcount != 1:
                 raise ValueError('人物资料不存在，名字未保存。')
+        return name
 
     def delete(self, identity):
         with self.connection() as db:

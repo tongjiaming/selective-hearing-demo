@@ -74,6 +74,36 @@ def test_delete_does_not_reuse_id_or_resurrect_stale_worker(tmp_path):
     assert not store.load_speakers()
     restarted = SpeakerRegistry(store=ProfileStore(path))
     assert restarted.assign([voice()], [1.2]) == ['speaker_2']
+    assert restarted.snapshot()[0]['name'] == '说话人 1'
+    assert restarted.snapshot()[0]['display_number'] == 1
+
+
+def test_display_numbers_fill_holes_without_renumbering_existing_people(tmp_path):
+    store = ProfileStore(tmp_path / 'people.sqlite3')
+    people = [store.create(voice(), 1, 1) for _ in range(3)]
+    store.rename(people[2].id, '小王')
+    store.delete(people[1].id)
+    new = store.create(voice(), 1, 1)
+    assert new.id == 'speaker_4'
+    rows = store.summaries()
+    assert [(r['display_number'], r['name']) for r in rows] == [(1, '说话人 1'), (3, '小王'), (2, '说话人 2')]
+    assert store.rename(new.id, ' ') == '说话人 2'
+    assert ProfileStore(store.path).summaries() == rows
+
+
+def test_old_default_speaker_six_becomes_one_preserving_identity_and_custom_names(tmp_path):
+    store = ProfileStore(tmp_path / 'people.sqlite3')
+    people = [store.create(voice(), 1, 1) for _ in range(7)]
+    for person in people[:5]:
+        store.delete(person.id)
+    store.rename(people[6].id, '小王')
+    with store.connection() as db:
+        db.execute('DROP INDEX speaker_display_number')
+        db.execute('ALTER TABLE speakers DROP COLUMN display_number')
+    restored = ProfileStore(store.path)
+    assert [(r['id'], r['display_number'], r['name']) for r in restored.summaries()] == [
+        ('speaker_6', 1, '说话人 1'), ('speaker_7', 2, '小王')]
+    assert ProfileStore(store.path).summaries() == restored.summaries()
 
 
 def test_worker_learning_does_not_overwrite_rename_and_stats(tmp_path):
