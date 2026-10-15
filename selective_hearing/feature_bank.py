@@ -62,9 +62,9 @@ class FeatureBank:
                 accepted.append(sample)
         return accepted
 
-    def scores(self, vector, speakers, exclude_id=None, samples=None):
+    def scores(self, vector, speakers, exclude_id=None, samples=None, reference_speakers=None):
         samples = self.samples if samples is None else samples
-        samples = self.reference_samples(samples, speakers)
+        samples = self.reference_samples(samples, speakers if reference_speakers is None else reference_speakers)
         result = []
         for speaker in speakers:
             neighbors = sorted((float(vector @ s.vector) for s in samples
@@ -76,7 +76,7 @@ class FeatureBank:
                           else reference)
         return result
 
-    def reconcile(self, speakers):
+    def reconcile(self, speakers, provisional_ids=(), conflicts=()):
         """Simultaneous corrections; no self-votes or same-pass cascades.
 
         Three supporting neighbors, high absolute similarity and a clear lead
@@ -89,7 +89,8 @@ class FeatureBank:
         # Python dot products when the feature memory is full.
         vectors = np.stack([sample.vector for sample in snapshot])
         similarities = vectors @ vectors.T
-        reference_ids = {sample.id for sample in self.reference_samples(snapshot, speakers)}
+        reference_ids = {sample.id for sample in self.reference_samples(
+            snapshot, [s for s in speakers if s.id not in provisional_ids])}
         groups = {speaker.id: np.array([i for i, sample in enumerate(snapshot)
                                         if sample.speaker_id == speaker.id and sample.id in reference_ids], dtype=int) for speaker in speakers}
         changes = []
@@ -105,16 +106,25 @@ class FeatureBank:
                     votes.append((score, speaker.id))
                     scores[speaker.id] = max(reference, score)
             votes.sort(reverse=True)
+            if sample.speaker_id in provisional_ids:
+                votes = [(score, identity) for score, identity in votes
+                         if identity not in provisional_ids
+                         and tuple(sorted((sample.speaker_id, identity))) not in conflicts]
             if not votes or votes[0][0] < .75:
                 continue
             score, winner = votes[0]
             if winner == sample.speaker_id:
                 continue
+            if sample.speaker_id and tuple(sorted((sample.speaker_id, winner))) in conflicts:
+                continue
             if sample.batch_id and any(other.id != sample.id and other.batch_id == sample.batch_id
                                        and other.speaker_id == winner for other in snapshot):
                 continue  # Two simultaneous sources cannot be the same person.
             # Include sparse classes' reference scores as competing evidence.
-            competing = [score for identity, score in scores.items() if identity != winner]
+            # A one-shot draft's own anchor is the same observation, not an
+            # independent vote against three later reliable reference samples.
+            competing = [score for identity, score in scores.items() if identity != winner
+                         and not (sample.speaker_id in provisional_ids and identity == sample.speaker_id)]
             if competing and score - max(competing) < .15:
                 continue
             changes.append((sample.id, sample.speaker_id, winner))

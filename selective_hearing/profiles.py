@@ -63,6 +63,11 @@ class ProfileStore:
             db.execute('CREATE TABLE IF NOT EXISTS voice_samples ('
                        'id INTEGER PRIMARY KEY AUTOINCREMENT, vector BLOB NOT NULL, seconds REAL NOT NULL, '
                        'speaker_id INTEGER REFERENCES speakers(id) ON DELETE CASCADE, batch_id INTEGER NOT NULL DEFAULT 0)')
+            db.execute('CREATE TABLE IF NOT EXISTS speaker_aliases ('
+                       'source INTEGER PRIMARY KEY, target INTEGER NOT NULL REFERENCES speakers(id) ON DELETE CASCADE)')
+            db.execute('CREATE TABLE IF NOT EXISTS speaker_conflicts ('
+                       'a INTEGER REFERENCES speakers(id) ON DELETE CASCADE, '
+                       'b INTEGER REFERENCES speakers(id) ON DELETE CASCADE, PRIMARY KEY (a, b))')
             if changed:
                 self.learning_reset = bool(db.execute('SELECT COUNT(*) FROM speakers').fetchone()[0]
                                            or db.execute('SELECT COUNT(*) FROM voice_samples').fetchone()[0])
@@ -190,6 +195,56 @@ class ProfileStore:
                  'learned_observations': learned, 'feature_samples': counts.get(n, 0), 'display_number': display}
                 for n, name, observations, seconds, learned, display in rows]
 
+    def load_aliases(self):
+        with self.connection() as db:
+            return {f'speaker_{source}': f'speaker_{target}'
+                    for source, target in db.execute('SELECT source, target FROM speaker_aliases')}
+
+    def load_conflicts(self):
+        with self.connection() as db:
+            return {tuple(sorted((f'speaker_{a}', f'speaker_{b}')))
+                    for a, b in db.execute('SELECT a, b FROM speaker_conflicts')}
+
+    def record_conflict(self, first, second):
+        a, b = sorted((self.number(first), self.number(second)))
+        with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
+            db.execute('INSERT OR IGNORE INTO speaker_conflicts VALUES (?, ?)', (a, b))
+
+    def merge(self, source, target):
+        """Atomic draft retirement; never merge co-occurring or differently named people."""
+        source, target = self.number(source), self.number(target)
+        if source == target:
+            return False
+        with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.check_revision(db)
+            rows = {row[0]: row[1:] for row in db.execute(
+                'SELECT id, name, display_number, observations, seconds FROM speakers WHERE id IN (?, ?)',
+                (source, target))}
+            if len(rows) != 2:
+                return False
+            if db.execute('SELECT 1 FROM speaker_conflicts WHERE a=? AND b=?', tuple(sorted((source, target)))).fetchone():
+                return False
+            source_name, source_display, observations, seconds = rows[source]
+            target_name, target_display, _, _ = rows[target]
+            source_custom = source_name != f'说话人 {source_display}'
+            target_custom = target_name != f'说话人 {target_display}'
+            if source_custom and target_custom and source_name != target_name:
+                return False
+            neighbors = [b if a == source else a for a, b in db.execute(
+                'SELECT a, b FROM speaker_conflicts WHERE a=? OR b=?', (source, source))]
+            for other in neighbors:
+                db.execute('INSERT OR IGNORE INTO speaker_conflicts VALUES (?, ?)', tuple(sorted((target, other))))
+            db.execute('UPDATE voice_samples SET speaker_id=? WHERE speaker_id=?', (target, source))
+            db.execute('UPDATE speakers SET name=?, observations=observations+?, seconds=seconds+? WHERE id=?',
+                       (source_name if source_custom and not target_custom else target_name, observations, seconds, target))
+            db.execute('UPDATE speaker_aliases SET target=? WHERE target=?', (target, source))
+            db.execute('INSERT OR REPLACE INTO speaker_aliases VALUES (?, ?)', (source, target))
+            db.execute('DELETE FROM speakers WHERE id=?', (source,))
+        return True
+
     def window_seconds(self, default):
         with self.connection() as db:
             row = db.execute("SELECT value FROM metadata WHERE key='window_seconds'").fetchone()
@@ -243,6 +298,9 @@ class ProfileStore:
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
             self.check_revision(db)
+            alias = db.execute('SELECT target FROM speaker_aliases WHERE source=?', (self.number(identity),)).fetchone()
+            if alias:
+                identity = f'speaker_{alias[0]}'
             row = db.execute('SELECT display_number FROM speakers WHERE id=?', (self.number(identity),)).fetchone()
             if row is None:
                 raise ValueError('人物资料不存在，名字未保存。')

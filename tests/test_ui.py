@@ -85,6 +85,42 @@ def test_default_launch_loads_then_starts_and_has_no_file_controls(monkeypatch, 
     finally: app.close()
 
 
+@pytest.mark.parametrize('file_mode', [False, True])
+def test_merged_draft_card_preserves_name_mute_and_speaking_indicator(monkeypatch, root, file_mode):
+    import numpy as np
+    from selective_hearing.core import SpeakerRegistry
+    startup_fixture(monkeypatch)
+    app = FileApp(root) if file_mode else App(root, auto_start=False)
+    try:
+        vector = np.zeros(192, np.float32)
+        vector[0] = 1
+        draft = app.profile_store.create(vector, 1, .25)
+        target = app.profile_store.create(vector, 3, 3)
+        app.profile_store.add_samples([(vector, .25, draft.id)])
+        for _ in range(3):
+            app.profile_store.add_samples([(vector, 1, target.id)])
+        app.update_people(app.profile_store.summaries())
+        app.speaker_names[draft.id].set('小王')
+        app.commit_name(draft.id)
+        app.speaker_mutes[draft.id].invoke()
+        registry = SpeakerRegistry(store=app.profile_store)
+        registry.assign([], [])
+        # Saving stale but unedited cards must not overwrite the transferred name.
+        assert app.save_names()
+        assert app.profile_store.summaries()[0]['name'] == '小王'
+        app.apply_profile_aliases(registry.aliases, registry.snapshot())
+        app.update_people(registry.snapshot())
+        assert list(app.speaker_cards) == [target.id]
+        assert app.speaker_names[target.id].get() == '小王'
+        assert not app.control.track_enabled(target.id)
+        app.update_speaking([draft.id])
+        assert app.active_speakers == {target.id}
+        app.speaker_buttons[target.id].invoke()
+        assert app.control.track_enabled(draft.id)
+    finally:
+        app.close()
+
+
 @pytest.mark.parametrize('stage', ['before_load', 'during_load', 'failure', 'no_devices'])
 def test_stop_or_startup_failure_never_starts_capture(monkeypatch, root, stage):
     calls = startup_fixture(monkeypatch, available=stage != 'no_devices')

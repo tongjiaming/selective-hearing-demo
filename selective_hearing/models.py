@@ -116,13 +116,16 @@ class Processor:
                 durations.append(len(speech) / 16000)
                 tracks.append(track)
         ids = self.registry.assign(vectors, durations)
-        mapped = {identity: track for identity, track in zip(ids, tracks) if identity is not None}
+        mapped = {}
+        for identity, track in zip(ids, tracks):
+            if identity is not None:
+                mapped[identity] = mapped.get(identity, np.zeros_like(track)) + track
         decisions = self.registry.decisions
         messages = []
         created = sum(d['status'] == 'created' for d in decisions)
         recognized = sum(d['status'] == 'recognized' for d in decisions)
         if created:
-            messages.append(f'已新增 {created} 人')
+            messages.append(f'已新增 {created} 人（先建档，继续确认）')
         if recognized:
             messages.append(f'匹配到已有 {recognized} 人')
         for decision in decisions:
@@ -147,6 +150,8 @@ class Processor:
                 messages.append(f'本段有效人声最长 {max(voiced_seconds, default=0):.2f} 秒，未达到 {MIN_SPEECH_SECONDS:g} 秒')
         if self.registry.last_corrections:
             messages.append(f'更新 {len(self.registry.last_corrections)} 段历史特征归属')
+        if self.registry.last_merges:
+            messages.append(f'已合并 {len(self.registry.last_merges)} 个证据不足的重复人物')
         elapsed = time.perf_counter() - begin
         duration = len(audio16) / 16000
         return AudioPacket(audio16, mapped, captured_at), {
@@ -157,6 +162,8 @@ class Processor:
             "detected_speech_tracks": sum(seconds > 0 for seconds in voiced_seconds),
             "short_speech_tracks": sum(MIN_SPEECH_SECONDS <= seconds < .5 for seconds in durations),
             "pending_speakers": len(self.registry.candidates),
+            "profile_aliases": dict(self.registry.aliases),
+            "profile_merges": list(self.registry.last_merges),
             "recognition_status": '；'.join(dict.fromkeys(messages)),
             "identity_decisions": decisions,
             "feature_samples": len(self.registry.feature_bank.samples),

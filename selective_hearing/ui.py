@@ -35,6 +35,7 @@ class App:
         self.speaker_labels = {}
         self.speaker_mutes = {}
         self.speaker_names = {}
+        self.persisted_names = {}
         self.speaker_activity = {}
         self.active_speakers = set()
         self.saved_ids = set()
@@ -349,6 +350,7 @@ class App:
         self.speaker_labels.clear()
         self.speaker_mutes.clear()
         self.speaker_names.clear()
+        self.persisted_names.clear()
         self.speaker_activity.clear()
         self.active_speakers.clear()
         self.saved_ids.clear()
@@ -454,6 +456,7 @@ class App:
                 card.grid(row=position // 2, column=position % 2, sticky='w', padx=(0, 12), pady=4)
                 label = ttk.Label(card, wraplength=380)
                 self.speaker_names[identity] = tk.StringVar(value=speaker.get('name', f"说话人 {identity.split('_')[-1]}"))
+                self.persisted_names[identity] = self.speaker_names[identity].get()
                 name_box = ttk.Entry(card, textvariable=self.speaker_names[identity], width=22)
                 name_box.pack(anchor='w')
                 name_box.bind('<FocusOut>', lambda _, key=identity: self.commit_name(key))
@@ -483,14 +486,14 @@ class App:
                     text += ' · 初始声纹已保存'
             self.speaker_labels[identity].config(text=text)
         if speakers:
-            self.people_note.config(text="名字可直接编辑，回车保存。新人需跨片段确认，避免重复建人；同时最多分离两路人声。")
+            self.people_note.config(text="新声音先建档并可收听，后续确认归属、修正重复人物；名字可编辑。同时最多分离两路人声。")
         else:
             self.people_note.config(text=('尚未识别到足够清晰的人声，请尝试更清晰的录音。' if self.file_mode
                                           else '尚未识别到足够清晰的人声。请查看下方输入电平，并确认麦克风选择。'))
         self.refresh_track_controls()
 
     def update_speaking(self, active=()):
-        active = set(active) & self.speaker_cards.keys()
+        active = {self.control.canonical(identity) for identity in active} & self.speaker_cards.keys()
         for identity in self.active_speakers ^ active:
             if identity not in self.speaker_cards:
                 continue
@@ -501,14 +504,38 @@ class App:
                                                  foreground='#15803d' if speaking else '#67758a')
         self.active_speakers = active
 
+    def apply_profile_aliases(self, aliases, speakers):
+        self.control.apply_aliases(aliases)
+        merged_targets = set()
+        for source, target in aliases.items():
+            card = self.speaker_cards.pop(source, None)
+            if card is None:
+                continue
+            self.saved_ids.discard(source)
+            self.active_speakers.discard(source)
+            for mapping in (self.speaker_buttons, self.speaker_mutes, self.speaker_names,
+                            self.speaker_labels, self.speaker_activity, self.persisted_names):
+                mapping.pop(source, None)
+            card.destroy()
+            merged_targets.add(target)
+        for position, card in enumerate(self.speaker_cards.values()):
+            card.grid(row=position // 2, column=position % 2)
+        for speaker in speakers:
+            if speaker['id'] in merged_targets and speaker['id'] in self.speaker_names:
+                self.speaker_names[speaker['id']].set(speaker.get('name', self.speaker_names[speaker['id']].get()))
+                self.persisted_names[speaker['id']] = self.speaker_names[speaker['id']].get()
+
     def commit_name(self, identity):
         if identity not in self.speaker_names:
             return True
         value = ' '.join(self.speaker_names[identity].get().split())[:40]
+        if value == self.persisted_names.get(identity):
+            return True
         self.speaker_names[identity].set(value or f"说话人 {identity.split('_')[-1]}")
         if identity in self.saved_ids:
             try:
                 self.speaker_names[identity].set(self.profile_store.rename(identity, value))
+                self.persisted_names[identity] = self.speaker_names[identity].get()
             except Exception as exc:
                 self.profile_note.config(text=f'名字未保存：{exc}')
                 return False
@@ -626,6 +653,7 @@ class App:
                 elif kind == "progress":
                     if event.get('recognition_status'):
                         self.recognition_label.config(text='识别进度：' + event['recognition_status'])
+                    self.apply_profile_aliases(event.get('profile_aliases', {}), event['speakers'])
                     self.update_people(event["speakers"], event["active"])
                     if self.file_mode and "fraction" in event:
                         self.progress["value"] = event["fraction"]

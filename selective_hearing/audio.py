@@ -50,6 +50,9 @@ def process_file(path, backend, notify=lambda _: None, cancel=None, window_secon
             raise InterruptedError("已取消文件处理")
         part = audio[start:start + size]
         packet, info = processor.process(part)
+        for source, target in info.get('profile_aliases', {}).items():
+            if source in tracks:
+                tracks[target] = tracks.get(target, np.zeros_like(audio)) + tracks.pop(source)
         for identity, track in packet.tracks.items():
             if identity not in tracks:
                 tracks[identity] = np.zeros_like(audio)
@@ -219,6 +222,7 @@ class LiveSession:
                 self.cancel.set()
                 return
             if not self.cancel.is_set():
+                self.control.apply_aliases(info.get('profile_aliases', {}))
                 self.playback.put(packet)
                 self.notify({"type": "progress", **info})
 

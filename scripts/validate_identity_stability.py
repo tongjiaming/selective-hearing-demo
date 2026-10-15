@@ -65,10 +65,17 @@ def evaluate(backend, old_class, waveform, references, window_seconds, baseline_
     size = int(16000 * window_seconds)
     for start in range(0, len(waveform), size):
         packet, _ = processor.process(waveform[start:start + size])
+        for source, target in processor.registry.aliases.items():
+            if source in tracks:
+                tracks[target] = tracks.get(target, np.zeros_like(waveform)) + tracks.pop(source)
         for identity, track in packet.tracks.items():
             tracks.setdefault(identity, np.zeros_like(waveform))[start:start + len(track)] = track
     result = {'expected_people': len(references), 'before_people': len(old.speakers),
               'after_people': len(processor.registry.speakers), 'window_seconds': window_seconds,
+              'after_confirmed_people': sum(s.ready for s in processor.registry.speakers),
+              'after_provisional_people': sum(not s.ready for s in processor.registry.speakers),
+              'first_before_identity_block': next((i for i, row in enumerate(before_trace) if any(row)), None),
+              'first_after_identity_block': next((i for i, row in enumerate(after_trace) if any(row)), None),
               'duration_seconds': len(waveform) / 16000,
               'input_sha256': hashlib.sha256(waveform.tobytes()).hexdigest(),
               'eligible_tracks': sum(map(len, after_trace)),
@@ -88,6 +95,8 @@ def main():
     parser.add_argument('--live-window-seconds', type=float, default=1.5)
     parser.add_argument('--baseline-min-speech-seconds', type=float, default=0,
                         help='Reproduce an older processor speech-duration gate before its registry sees features.')
+    parser.add_argument('--allow-provisional-counts', action='store_true',
+                        help='Record draft over-segmentation instead of asserting exact identity counts.')
     parser.add_argument('--output', default='docs/evidence/identity-stability.json')
     args = parser.parse_args()
     references, manifest = [], []
@@ -123,7 +132,8 @@ def main():
     destination = ROOT / args.output
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    assert all(r['after_people'] == r['expected_people'] for r in cases.values()), 'Unexpected identity count; inspect evidence'
+    if not args.allow_provisional_counts:
+        assert all(r['after_people'] == r['expected_people'] for r in cases.values()), 'Unexpected identity count; inspect evidence'
 
 
 if __name__ == '__main__':

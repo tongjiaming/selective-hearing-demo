@@ -49,13 +49,13 @@ def test_discovery_status_explains_weak_short_and_accumulating_speech(tmp_path):
     backend.vector = np.eye(192, dtype=np.float32)[1]
     backend.seconds = .5
     _, pending = processor.process(audio)
-    assert '1/2' in pending['recognition_status'] and '0.5/2.0 秒' in pending['recognition_status']
-    assert pending['feature_samples'] == 2 and len(store.load_speakers()) == 1
+    assert '已新增 1 人' in pending['recognition_status'] and pending['active'] == ['speaker_2']
+    assert pending['feature_samples'] == 2 and len(store.load_speakers()) == 2
     processor.process(audio)
     _, not_yet = processor.process(audio)
-    assert len(store.load_speakers()) == 1 and not_yet['pending_speakers'] == 1
+    assert len(store.load_speakers()) == 2 and not_yet['pending_speakers'] == 0
     _, added = processor.process(audio)
-    assert '已新增 1 人' in added['recognition_status'] and len(store.load_speakers()) == 2
+    assert '匹配到已有 1 人' in added['recognition_status'] and len(store.load_speakers()) == 2
     assert len(ProfileStore(store.path).load_samples()) == 5
 
 
@@ -77,7 +77,7 @@ def test_short_known_voice_is_matched_and_muted_without_training(tmp_path):
     np.testing.assert_allclose(packet.select(control.get()[0]), 0, atol=1e-8)
 
 
-def test_short_new_voices_accumulate_across_windows_and_restart(tmp_path):
+def test_short_new_voices_are_created_immediately_and_survive_restart(tmp_path):
     class Backend:
         voice = 0
         def separate(self, audio): return [audio]
@@ -89,13 +89,13 @@ def test_short_new_voices_accumulate_across_windows_and_restart(tmp_path):
     audio = np.full(24000, .03, np.float32)
     for index in range(4):
         packet, report = processor.process(audio)
-        assert len(processor.registry.speakers) == int(index == 3)
+        assert len(processor.registry.speakers) == 1
     assert report['active'] == ['speaker_1']
     backend.voice = 1
     for index in range(8):
         if index == 5:
             processor = Processor(backend, SpeakerRegistry(store=ProfileStore(path)))
         packet, report = processor.process(audio)
-        assert len(processor.registry.speakers) == (2 if index == 7 else 1)
+        assert len(processor.registry.speakers) == 2
     assert report['active'] == ['speaker_2']
     assert len(ProfileStore(path).load_samples()) == 12

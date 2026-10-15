@@ -5,7 +5,7 @@ from selective_hearing.core import SpeakerRegistry, AudioPacket, PlaybackBuffer,
 
 
 def test_output_permutation_does_not_swap_identity():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     a, b = np.array([1., 0., 0.]), np.array([0., 1., 0.])
     assert registry.assign([a, b], [1., 1.]) == ["speaker_1", None]
     assert not any(s["ready"] for s in registry.snapshot())
@@ -14,7 +14,7 @@ def test_output_permutation_does_not_swap_identity():
 
 
 def test_unknown_voice_never_forced_to_selected_identity():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
     registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
     assert registry.assign([[0, 0, 1]], [2]) == [None]
@@ -24,7 +24,7 @@ def test_unknown_voice_never_forced_to_selected_identity():
 
 
 def test_short_unmatched_fragment_does_not_create_extra_person():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
     registry.assign([[1, 0, 0], [0, 1, 0]], [2, 2])
     assert registry.assign([[0, 0, 1]], [.8]) == [None]
@@ -34,7 +34,7 @@ def test_short_unmatched_fragment_does_not_create_extra_person():
 
 
 def test_isolated_outliers_never_accumulate_into_people():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     vectors = np.eye(40)
     for _ in range(2):
         registry.assign(vectors[:2], [1.2, 1.2])
@@ -46,7 +46,7 @@ def test_isolated_outliers_never_accumulate_into_people():
 
 
 def test_candidate_requires_distinct_blocks_and_expires():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0]], [1.2])
     assert registry.assign([[0, 1], [0, 1]], [1.2, 1.2]) == [None, None]
     assert len(registry.speakers) == len(registry.candidates) == 1
@@ -58,7 +58,7 @@ def test_candidate_requires_distinct_blocks_and_expires():
 
 
 def test_ten_short_utterances_keep_active_candidate_and_rounding_does_not_delay():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0]], [1.2])
     for index in range(10):
         assert registry.assign([[0, 1]], [.2]) == (['speaker_2'] if index == 9 else [None])
@@ -66,7 +66,7 @@ def test_ten_short_utterances_keep_active_candidate_and_rounding_does_not_delay(
 
 
 def test_unrelated_short_utterances_do_not_accumulate_into_one_person():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     for vector in np.eye(40):
         assert registry.assign([vector], [.25]) == [None]
     assert not registry.speakers
@@ -74,7 +74,7 @@ def test_unrelated_short_utterances_do_not_accumulate_into_one_person():
 
 
 def test_short_voice_drift_matches_without_lowering_new_person_evidence():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0, 0]], [1.2])
     # 0.48 cosine: short-frame recognition can recover the existing person.
     changed = [0.48, np.sqrt(1 - .48 ** 2), 0]
@@ -88,13 +88,13 @@ def test_short_voice_drift_matches_without_lowering_new_person_evidence():
 
 
 def test_pending_person_is_competitor_for_ambiguous_known_match():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0], [0, 1]], [1.2, 1.2])
     assert registry.assign([[1, 1]], [1.2]) == [None]
 
 
 def test_averaged_candidate_is_rechecked_against_existing_person():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0, 0]], [1.2])
     radius = np.sqrt(1 - .29 ** 2)
     assert registry.assign([[.29, radius, 0]], [1.2]) == [None]
@@ -111,7 +111,7 @@ def test_promoted_voice_retires_old_candidates_so_they_cannot_mute_it():
     # Two initially inconsistent observations of B create separate candidates.
     # Once B has a confirmed profile, the older variant belongs to its
     # uncertainty band and must no longer act as a competing new person.
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     a = np.array([1., 0., 0., 0.])
     b = np.array([0., 1., 0., 0.])
     variant = unit([0., .48, np.sqrt(1 - .48 ** 2), 0.])
@@ -224,7 +224,7 @@ def test_all_people_off_keeps_unknown_until_its_own_switch_or_global_mute():
 
 
 def test_two_simultaneous_tracks_cannot_share_identity():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0]], [2])
     assigned = registry.assign([[1, 0], [0.99, 0.01]], [2, 2])
     assert assigned.count("speaker_1") == 1
@@ -232,7 +232,7 @@ def test_two_simultaneous_tracks_cannot_share_identity():
 
 
 def test_ambiguous_match_does_not_create_duplicate():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0], [0, 1]], [2, 2])
     assert registry.assign([[1, 1]], [2]) == [None]
 
@@ -272,7 +272,7 @@ def test_bounded_buffer_drops_oldest_and_survives_partial_read():
 
 
 def test_silence_and_invalid_embeddings():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     assert registry.assign([], []) == []
     with pytest.raises(ValueError):
         unit([0, 0])
@@ -311,7 +311,7 @@ def test_resampling_preserves_duration():
 
 
 def test_unstable_gray_zone_never_promotes_from_duration_alone():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0, 0]], [1.2])
     radius = np.sqrt(1 - .35 ** 2)
     variants = [[.35, radius, 0], [.35, radius * .6, radius * .8]]
@@ -321,7 +321,7 @@ def test_unstable_gray_zone_never_promotes_from_duration_alone():
 
 
 def test_repeated_subsecond_evidence_registers_without_single_fragment_registration():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0]], [1.2])
     assert registry.assign([[0, 1]], [.8]) == [None]
     assert registry.assign([[0, 1]], [.8]) == [None]
@@ -329,7 +329,7 @@ def test_repeated_subsecond_evidence_registers_without_single_fragment_registrat
 
 
 def test_gray_candidates_do_not_block_known_voice_return():
-    registry = SpeakerRegistry()
+    registry = SpeakerRegistry(eager=False)
     registry.assign([[1, 0]], [1.2])
     assert registry.assign([[.35, np.sqrt(1-.35**2)]], [1.2]) == [None]
     # Similar to the candidate but still positively identifiable as the original.

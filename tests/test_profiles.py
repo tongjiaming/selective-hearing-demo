@@ -56,14 +56,14 @@ def test_reopen_restores_identity_name_and_provisional_state(tmp_path):
     assert len(reopened.load_speakers()) == 1
 
 
-def test_pending_features_survive_without_creating_profile_on_load(tmp_path):
+def test_provisional_profiles_survive_without_creating_extra_profile_on_load(tmp_path):
     store = ProfileStore(tmp_path / 'people.sqlite3')
     registry = SpeakerRegistry(store=store)
     registry.assign([voice()], [1.2])
-    assert registry.assign([voice(90)], [1.2]) == [None]
-    assert len(registry.candidates) == 1
+    assert registry.assign([voice(90)], [1.2]) == ['speaker_2']
+    assert not registry.candidates
     restored = SpeakerRegistry(store=store)
-    assert len(restored.candidates) == 1 and len(restored.speakers) == 1
+    assert not restored.candidates and len(restored.speakers) == 2
     assert restored.assign([voice(90)], [1.2]) == ['speaker_2']
     assert restored.assign([voice(90)], [1.2]) == ['speaker_2']
 
@@ -76,7 +76,7 @@ def test_learning_improves_unseen_variant_and_survives_restart(tmp_path):
         registry.assign([voice()], [1.2])
         for _ in range(4):
             assert registry.assign([voice(45)], [1.2]) == ['speaker_1']
-    assert frozen.assign([voice(70)], [1.2]) == [None]
+    assert frozen.assign([voice(70)], [1.2]) == ['speaker_2']
     restored = SpeakerRegistry(store=ProfileStore(path))
     assert restored.assign([voice(70)], [1.2]) == ['speaker_1']
     assert restored.speakers[0].learned_observations == 4  # anchor guard blocks risky learning

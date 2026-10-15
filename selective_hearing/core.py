@@ -105,12 +105,13 @@ class SpeakerRegistry:
     """Optionally persistent identities; each separator block has at most two sources.
 
     Joint one-to-one assignment handles separator output permutations.
-    The first voice is immediately selectable. Later identities need consistent
-    evidence across separate blocks, not a single mismatched short utterance.
+    Usable unmatched voices are immediately selectable drafts by default.
+    Strong later evidence can reassign samples and retire duplicate drafts.
+    eager=False retains the historical deferred-discovery comparison mode.
     """
     def __init__(self, threshold=0.55, new_threshold=0.30, margin=0.10, min_new_seconds=1.0,
                  short_threshold=0.45, candidate_threshold=0.50,
-                 candidate_blocks=6, max_candidates=12, store=None, learning=True):
+                 candidate_blocks=6, max_candidates=12, store=None, learning=True, eager=True):
         self.threshold = threshold
         self.short_threshold = short_threshold
         self.new_threshold = new_threshold
@@ -121,14 +122,20 @@ class SpeakerRegistry:
         self.max_candidates = max_candidates
         self.store = store
         self.learning = learning
+        self.eager = eager
         self.speakers = store.load_speakers() if store is not None else []
+        self.aliases = store.load_aliases() if store is not None else {}
+        self.conflicts = store.load_conflicts() if store is not None else set()
+        self.next_identity = max((int(s.id.split('_')[-1]) for s in self.speakers), default=0) + 1
+        self.last_merges = []
         self.candidates = []
         self.block = 0
         self.decisions = []
         self.discovery_ceiling = min(short_threshold, threshold)
         self.feature_bank = FeatureBank(store.load_samples() if store is not None else ())
         self.last_corrections = []
-        self._restore_candidates()
+        if not eager:
+            self._restore_candidates()
 
     def _restore_candidates(self):
         # Recent unresolved evidence survives an app restart. Reconstruct only
@@ -161,12 +168,14 @@ class SpeakerRegistry:
     def _scores(self, vector, speakers):
         if not self.learning:
             return [speaker.similarity(vector) for speaker in speakers]
-        return self.feature_bank.scores(vector, speakers)
+        return self.feature_bank.scores(vector, speakers,
+            reference_speakers=[s for s in speakers if s.ready] if self.eager else None)
 
     def _register(self, vector, seconds, observations=1):
         vector = unit(vector)
         speaker = (self.store.create(vector, observations, seconds) if self.store is not None
-                   else Speaker(f'speaker_{len(self.speakers) + 1}', vector, observations, seconds))
+                   else Speaker(f'speaker_{self.next_identity}', vector, observations, seconds))
+        self.next_identity += 1
         self.speakers.append(speaker)
         return speaker.id
 
@@ -178,6 +187,9 @@ class SpeakerRegistry:
         # Brief usable speech must accumulate rather than be discarded forever.
         if seconds < min(MIN_SPEECH_SECONDS, self.min_new_seconds):
             return self._discovery_result('short_speech')
+        if self.eager:
+            identity = self._register(vector, seconds)
+            return self._discovery_result('created', identity, speaker_id=identity, provisional=True)
         if not self.speakers and seconds >= self.min_new_seconds:
             identity = self._register(vector, seconds)
             return self._discovery_result('created', identity)
@@ -223,6 +235,7 @@ class SpeakerRegistry:
             raise ValueError("每块最多两路声音，特征和时长必须对应")
         self.block += 1
         self.decisions = []
+        self.last_merges = []
         self._prune_candidates()
         vectors = [unit(v) for v in vectors]
         known = list(self.speakers)
@@ -236,7 +249,7 @@ class SpeakerRegistry:
             for j, score in enumerate(row):
                 others = [x for k, x in enumerate(row) if k != j]
                 others.extend(float(vectors[i] @ c.vector) for c in self.candidates if not c.borderline)
-                if score >= threshold and (not others or score - max(others) >= self.margin):
+                if score >= threshold and (self.eager or not others or score - max(others) >= self.margin):
                     allowed.append(j)
             options.append(allowed)
         best, best_score = tuple([None] * len(vectors)), -1.0
@@ -275,13 +288,54 @@ class SpeakerRegistry:
         else:
             for vector, seconds, identity in entries:
                 self.feature_bank.add(vector, seconds, identity, self.block)
-        self.last_corrections = self.feature_bank.reconcile(self.speakers) if self.learning else []
+        if len(result) == 2 and all(result) and result[0] != result[1]:
+            pair = tuple(sorted(result))
+            self.conflicts.add(pair)
+            if self.store is not None:
+                self.store.record_conflict(*pair)
+        before = list((sample.id, sample.speaker_id) for sample in self.feature_bank.samples)
+        # A few repeated short matches can light the confirmation indicator,
+        # but are still insufficient independent evidence to anchor a class.
+        support = {s.id: sum(sample.speaker_id == s.id and sample.seconds >= 1
+                           and float(sample.vector @ s.vector) >= .55
+                           for sample in self.feature_bank.samples) for s in self.speakers}
+        provisional = {s.id for s in self.speakers if not s.ready or support[s.id] < 3} if self.eager else set()
+        self.last_corrections = self.feature_bank.reconcile(
+            self.speakers, provisional_ids=provisional, conflicts=self.conflicts) if self.learning else []
         self.feature_bank.trim()
         if self.store is not None and (entries or self.last_corrections):
             self.store.correct_samples(self.last_corrections)
             self.feature_bank = FeatureBank(self.store.load_samples())
+        if self.eager and self.learning:
+            self._merge_corrected_profiles(before, provisional)
+            result = [self.aliases.get(identity, identity) for identity in result]
         self._prune_candidates()
         return result
+
+    def _merge_corrected_profiles(self, before, provisional):
+        """Retire a draft only when ALL retained samples now agree on one person."""
+        current = {sample.id: sample.speaker_id for sample in self.feature_bank.samples}
+        for source in sorted(provisional):
+            sample_ids = [number for number, identity in before if identity == source]
+            destinations = {current.get(number) for number in sample_ids}
+            if not sample_ids or len(destinations) != 1:
+                continue
+            target = destinations.pop()
+            if target is None or target == source or tuple(sorted((source, target))) in self.conflicts:
+                continue
+            if self.store is not None and not self.store.merge(source, target):
+                continue
+            if self.store is not None:
+                self.speakers = self.store.load_speakers()
+                self.aliases = self.store.load_aliases()
+                self.conflicts = self.store.load_conflicts()
+            else:
+                self.speakers = [s for s in self.speakers if s.id != source]
+                self.aliases = {key: target if value == source else value for key, value in self.aliases.items()}
+                self.aliases[source] = target
+                self.conflicts = {tuple(sorted(target if item == source else item for item in pair))
+                                  for pair in self.conflicts}
+            self.last_merges.append({'from': source, 'to': target})
 
     def _prune_candidates(self):
         # Discovery requires distance from every known voice. After promotion or
@@ -316,8 +370,10 @@ class TrackSelection:
     """Immutable snapshot read by the audio callback, with independent overrides."""
     default_enabled: bool = True
     overrides: tuple = ()
+    aliases: tuple = ()
 
     def enabled(self, identity):
+        identity = dict(self.aliases).get(identity, identity)
         return dict(self.overrides).get(identity, self.default_enabled)
 
 
@@ -368,6 +424,7 @@ class OutputControl:
         self._lock = Lock()
         self.mode = "all"
         self.gain = 0.4
+        self.aliases = {}
 
     def set(self, mode=None, gain=None):
         with self._lock:
@@ -378,10 +435,37 @@ class OutputControl:
 
     def get(self):
         with self._lock:
-            return self.mode, self.gain
+            mode = self.mode
+            if isinstance(mode, TrackSelection):
+                mode = TrackSelection(mode.default_enabled, mode.overrides, tuple(self.aliases.items()))
+            return mode, self.gain
+
+    def canonical(self, identity):
+        with self._lock:
+            return self.aliases.get(identity, identity)
+
+    def apply_aliases(self, aliases):
+        with self._lock:
+            for source, target in aliases.items():
+                source = self.aliases.get(source, source)
+                target = self.aliases.get(target, target)
+                if source == target:
+                    continue
+                selection = self.mode if isinstance(self.mode, TrackSelection) else TrackSelection(self.mode == 'all')
+                enabled = selection.enabled(source) and selection.enabled(target)
+                overrides = dict(selection.overrides)
+                overrides.pop(source, None)
+                overrides.pop(target, None)
+                if enabled != selection.default_enabled:
+                    overrides[target] = enabled
+                self.aliases = {key: target if value == source else value for key, value in self.aliases.items()}
+                self.aliases[source] = target
+                self.mode = (TrackSelection(selection.default_enabled, tuple(overrides.items())) if overrides
+                             else 'all' if selection.default_enabled else 'mute')
 
     def set_track(self, identity, enabled):
         with self._lock:
+            identity = self.aliases.get(identity, identity)
             selection = self.mode if isinstance(self.mode, TrackSelection) else TrackSelection(
                 default_enabled=self.mode == 'all')
             overrides = dict(selection.overrides)
@@ -399,6 +483,7 @@ class OutputControl:
 
     def track_enabled(self, identity):
         with self._lock:
+            identity = self.aliases.get(identity, identity)
             if isinstance(self.mode, TrackSelection):
                 return self.mode.enabled(identity)
             return self.mode == 'all'
