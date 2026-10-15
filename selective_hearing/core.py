@@ -258,8 +258,17 @@ class OutputControl:
             selection = self.mode if isinstance(self.mode, TrackSelection) else TrackSelection(
                 default_enabled=self.mode == 'all')
             overrides = dict(selection.overrides)
-            overrides[identity] = bool(enabled)
-            self.mode = TrackSelection(selection.default_enabled, tuple(overrides.items()))
+            if bool(enabled) == selection.default_enabled:
+                overrides.pop(identity, None)
+            else:
+                overrides[identity] = bool(enabled)
+            # Undoing the final exclusion must restore the original signal,
+            # including blocks that identity matching could not label. Keep
+            # filtering while any exclusion or default-mute policy remains.
+            if not overrides:
+                self.mode = 'all' if selection.default_enabled else 'mute'
+            else:
+                self.mode = TrackSelection(selection.default_enabled, tuple(overrides.items()))
 
     def track_enabled(self, identity):
         with self._lock:

@@ -198,6 +198,35 @@ def test_ui_opens_without_audio_and_preserves_mute(monkeypatch, root):
         app.close()
 
 
+def test_listen_button_restores_audio_and_label_after_last_exclusion(monkeypatch, root):
+    import numpy as np
+    from selective_hearing.audio import LiveSession
+    from selective_hearing.core import AudioPacket
+    from types import SimpleNamespace
+    monkeypatch.setattr('selective_hearing.ui.devices', lambda **kwargs: [])
+    app = App(root, auto_start=False)
+    try:
+        app.update_people([{'id': 'speaker_1', 'ready': True}])
+        session = LiveSession(0, 1, app.control, lambda _: None)
+        session.playback.put(AudioPacket(np.full(960, .2, np.float32)))
+        output = np.empty((320, 1), np.float32)
+        status = SimpleNamespace(output_underflow=False)
+        session._output(output, 320, None, status)
+        np.testing.assert_allclose(output, .08)
+        app.speaker_mutes['speaker_1'].invoke()
+        session._output(output, 320, None, status)
+        np.testing.assert_array_equal(output, 0)
+        app.speaker_buttons['speaker_1'].invoke()
+        # A subsequent model update must not put playback back in filtering mode.
+        app.update_people([{'id': 'speaker_1', 'ready': True}], [])
+        session._output(output, 320, None, status)
+        np.testing.assert_allclose(output, .08)
+        assert app.mode_label['text'] == '当前：全部原声'
+        assert app.speaker_buttons['speaker_1']['style'] == 'Selected.TButton'
+    finally:
+        app.close()
+
+
 def test_multiple_people_have_independent_controls_and_scrollable_cards(monkeypatch, root):
     monkeypatch.setattr('selective_hearing.ui.devices', lambda **kwargs: [])
     app = App(root, auto_start=False)

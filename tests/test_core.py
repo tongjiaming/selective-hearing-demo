@@ -111,6 +111,41 @@ def test_independent_tracks_keep_other_choices_and_missing_tracks_silent():
     np.testing.assert_allclose(packet.select(control.get()[0]), .9)
 
 
+@pytest.mark.parametrize('has_track', [False, True])
+def test_undo_last_exclusion_restores_original_even_when_identity_is_missing(has_track):
+    control = OutputControl()
+    original = np.full(320, .3, np.float32)
+    packet = AudioPacket(original, {'speaker_1': original * .5} if has_track else {})
+    # Clicking an already enabled person must not change the audio either.
+    control.set_track('speaker_1', True)
+    np.testing.assert_array_equal(packet.select(control.get()[0]), original)
+    for _ in range(3):
+        control.set_track('speaker_1', False)
+        np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+        control.set_track('speaker_1', True)
+        np.testing.assert_array_equal(packet.select(control.get()[0]), original)
+
+
+def test_unmuting_one_person_keeps_remaining_exclusions_and_global_mute_policy():
+    control = OutputControl()
+    packet = AudioPacket(np.full(320, .3, np.float32))  # unknown voice
+    control.set_track('speaker_1', False)
+    control.set_track('speaker_2', False)
+    control.set_track('speaker_1', True)
+    assert not control.track_enabled('speaker_2')
+    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+    control.set_track('speaker_2', True)
+    np.testing.assert_array_equal(packet.select(control.get()[0]), packet.original)
+    control.set(mode='mute')
+    control.set_track('speaker_1', True)
+    assert not control.track_enabled('speaker_2')
+    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+    packet.tracks['speaker_1'] = np.full(320, .1, np.float32)
+    np.testing.assert_allclose(packet.select(control.get()[0]), .1)
+    control.set_track('speaker_1', False)
+    np.testing.assert_array_equal(packet.select(control.get()[0]), 0)
+
+
 def test_two_simultaneous_tracks_cannot_share_identity():
     registry = SpeakerRegistry()
     registry.assign([[1, 0]], [2])

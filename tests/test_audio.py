@@ -147,6 +147,37 @@ def test_file_callback_switch_keeps_position_without_device():
     np.testing.assert_allclose(data[:, 0], [.15, .2, .25])
 
 
+@pytest.mark.parametrize('kind', ['live', 'file'])
+def test_callback_resumes_original_at_current_position_after_unmute(kind):
+    control = OutputControl()
+    control.set(gain=.5)
+    # No identity on these blocks: VAD/matching misses must not prevent recovery.
+    original = np.linspace(.1, .8, 1280, dtype=np.float32)
+    packet = AudioPacket(original)
+    if kind == 'live':
+        player = LiveSession(0, 1, control, lambda _: None)
+        player.playback.put(packet)
+        callback = player._output
+    else:
+        player = object.__new__(FilePlayer)
+        player.packet, player.control = packet, control
+        player.offset, player.loop, player.finished = 0, True, False
+        callback = player._callback
+    data = np.empty((320, 1), np.float32)
+    status = SimpleNamespace(output_underflow=False)
+    callback(data, 320, None, status)
+    np.testing.assert_allclose(data[:, 0], original[:320] * .5)
+    control.set_track('speaker_1', False)
+    callback(data, 320, None, status)
+    np.testing.assert_array_equal(data, 0)
+    control.set_track('speaker_1', True)
+    callback(data, 320, None, status)
+    np.testing.assert_allclose(data[:, 0], original[640:960] * .5)
+    # No rewinding or draining the queue when a button changes.
+    callback(data, 320, None, status)
+    np.testing.assert_allclose(data[:, 0], original[960:] * .5)
+
+
 def test_live_stop_is_idempotent_without_devices():
     session = LiveSession(0, 1, OutputControl(), lambda _: None)
     session.stop()
