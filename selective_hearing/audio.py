@@ -11,54 +11,23 @@ import soundfile as sf
 
 from .core import AudioPacket, PlaybackBuffer, SpeakingActivity, mono, resample
 from .models import Processor
+from .device_probe import devices, stream_settings
 
 LIVE_WINDOW_SECONDS = 3.0
 FAST_WINDOW_SECONDS = 1.5
 
 
-def stream_settings(device):
-    """Use the same format conversion for probing and opening Windows endpoints."""
-    info = sd.query_devices(device)
-    api = sd.query_hostapis(info['hostapi'])
-    if api['name'] == 'Windows WASAPI':
-        return sd.WasapiSettings(auto_convert=True)
-    return None
-
-
-def devices(refresh=False):
-    if refresh:
-        # PortAudio caches the device list. Only call this with all streams closed.
-        # Private hooks are isolated here and sounddevice is pinned to 0.5.3.
-        if sd._initialized:
-            sd._terminate()
-        sd._initialize()
-    apis = sd.query_hostapis()
-    # WASAPI exposes active endpoints once, without legacy mapper aliases or KS pins.
-    api_id = next((i for i, api in enumerate(apis) if api['name'] == 'Windows WASAPI'),
-                  sd.default.hostapi)
-    api = apis[api_id]
-    result = []
-    for i, device in enumerate(sd.query_devices()):
-        if device['hostapi'] != api_id:
-            continue
-        item = {'id': i, 'name': device['name'], 'api': api['name'],
-                'rate': int(device['default_samplerate'])}
-        for direction, check in [('input', sd.check_input_settings),
-                                 ('output', sd.check_output_settings)]:
-            item[direction] = 0
-            item[f'default_{direction}'] = i == api[f'default_{direction}_device']
-            if not device[f'max_{direction}_channels']:
-                continue
-            try:
-                # This queries capabilities; it never opens or starts a microphone.
-                check(device=i, channels=1, samplerate=16000, dtype='float32',
-                      extra_settings=stream_settings(i))
-            except (sd.PortAudioError, ValueError):
-                continue
-            item[direction] = device[f'max_{direction}_channels']
-        if item['input'] or item['output']:
-            result.append(item)
-    return result
+def close_stream(stream):
+    if stream is None:
+        return
+    # A removed endpoint may reject stop; still release its handle and let the
+    # other stream close before PortAudio is reinitialized for a new device.
+    try:
+        stream.stop()
+    except sd.PortAudioError:
+        pass
+    finally:
+        stream.close()
 
 
 def load_audio(path):
@@ -148,9 +117,8 @@ class FilePlayer:
     def stop(self):
         if self.stream is not None:
             try:
-                self.stream.stop()
+                close_stream(self.stream)
             finally:
-                self.stream.close()
                 self.stream = None
 
 
@@ -265,12 +233,13 @@ class LiveSession:
 
     def stop(self):
         self.cancel.set()
-        for stream in (self.input_stream, self.output_stream):
-            if stream is not None:
-                try:
-                    stream.stop()
-                finally:
-                    stream.close()
-        self.input_stream = self.output_stream = None
+        try:
+            close_stream(self.input_stream)
+        finally:
+            self.input_stream = None
+            try:
+                close_stream(self.output_stream)
+            finally:
+                self.output_stream = None
         if self.worker and self.worker.is_alive():
             self.worker.join(timeout=0.2)

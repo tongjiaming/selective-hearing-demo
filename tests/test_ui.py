@@ -8,6 +8,7 @@ from selective_hearing.ui import App
 
 @pytest.fixture(autouse=True)
 def isolated_profiles(monkeypatch, tmp_path):
+    monkeypatch.setattr(App, 'watch_devices', lambda self: None)
     monkeypatch.setattr('selective_hearing.ui.default_profile_path',
                         lambda file_mode=False: tmp_path / ('file.sqlite3' if file_mode else 'live.sqlite3'))
 
@@ -35,6 +36,7 @@ class FakeLiveSession:
         self.cancel = Event()
         self.worker = None
         self.started = False
+        self.device_ids = args[:2]
         self.registry = kwargs.get('registry')
         self.window_seconds = kwargs.get('window_seconds')
     def start(self):
@@ -498,5 +500,136 @@ def test_custom_window_reaches_file_processor(monkeypatch, root):
         assert str(app.window_box['state']) == 'disabled'
         drain(app)
         assert str(app.window_box['state']) == 'normal'
+    finally:
+        app.close()
+
+
+def deliver_devices(app, items, **kwargs):
+    app.events.put(dict(type='devices', items=items, epoch=app.device_epoch, **kwargs))
+    drain(app)
+
+
+def test_hotplug_lists_new_devices_without_restarting_or_using_helper_ids(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    listed = [device(1, 'Mic', 'input', True), device(2, 'Headphones', 'output', True)]
+    probes = []
+    def local_devices(**kwargs):
+        probes.append(kwargs)
+        return list(listed)
+    monkeypatch.setattr('selective_hearing.ui.devices', local_devices)
+    app = App(root, auto_start=False)
+    try:
+        app.backend = object()
+        identity = seed_person(app)
+        app.start_live()
+        app.set_person(identity, False)
+        session = app.session
+        before = len(probes)
+        helper = [device(80, 'Mic', 'input'), device(81, 'Headphones', 'output'),
+                  device(82, 'USB Mic', 'input', True), device(83, 'USB Headphones', 'output', True)]
+        deliver_devices(app, helper)
+        assert app.session is session and not session.cancel.is_set()
+        assert len(probes) == before  # Never reinitialize active PortAudio.
+        assert 'USB Mic' in app.input_box['values'][1]
+        assert app.input_box.get() == 'Mic' and app.output_box.get() == 'Headphones'
+        # Local IDs can differ from the probe process; switching must resolve names again.
+        listed[:] = [device(11, 'Mic', 'input'), device(12, 'Headphones', 'output'),
+                     device(13, 'USB Mic', 'input', True), device(14, 'USB Headphones', 'output', True)]
+        app.input_box.current(1)
+        app.remember_device('input')
+        assert session.cancel.is_set() and app.session is not session
+        assert app.session.device_ids == (13, 12)
+        assert not app.control.track_enabled(identity)
+    finally:
+        app.close()
+
+
+@pytest.mark.parametrize('cancel', [False, True])
+def test_device_switch_waits_for_worker_and_stop_cancels_resume(monkeypatch, root, cancel):
+    from types import SimpleNamespace
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        app.backend = object()
+        app.start_live()
+        session = app.session
+        running = [True]
+        session.worker = SimpleNamespace(is_alive=lambda: running[0])
+        app.remember_device('input')
+        assert session.cancel.is_set() and app.session is session
+        assert app.pending_device_start == 'live'
+        if cancel:
+            app.stop()
+        running[0] = False
+        drain(app)
+        assert app.pending_device_start is None
+        if cancel:
+            assert app.session is None
+        else:
+            assert app.session is not session and app.session.started
+    finally:
+        running[0] = False
+        app.close()
+
+
+def test_unplug_stops_and_does_not_fall_back_to_speakers(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        app.backend = object()
+        app.start_live()
+        session = app.session
+        deliver_devices(app, [device(8, 'Mic', 'input', True), device(9, 'Speakers', 'output', True)])
+        assert session.cancel.is_set() and app.session is None
+        assert app.output_box.current() == -1
+        assert app.pending_device_start is None and '已断开' in app.status['text']
+    finally:
+        app.close()
+
+
+def test_refresh_during_capture_isolated_and_scan_failures_keep_audio(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    app = App(root, auto_start=False)
+    try:
+        app.backend = object()
+        app.start_live()
+        session = app.session
+        scanned = []
+        monkeypatch.setattr(app, 'scan_devices', lambda: scanned.append(True))
+        app.refresh_devices()
+        assert scanned and app.session is session
+        app.events.put(dict(type='device_error', message='timeout', epoch=app.device_epoch))
+        drain(app)
+        assert app.session is session and app.input_box.get()
+        # A delayed old scan must not clear freshly resolved devices.
+        app.events.put(dict(type='devices', items=[], epoch=app.device_epoch - 1))
+        drain(app)
+        assert app.session is session and app.inputs
+    finally:
+        app.close()
+
+
+def test_file_device_switch_resolves_local_ids_without_starting_microphone(monkeypatch, root):
+    startup_fixture(monkeypatch)
+    listed = [device(2, 'Headphones', 'output', True)]
+    monkeypatch.setattr('selective_hearing.ui.devices', lambda **kwargs: list(listed))
+    opened = []
+    class Player(FakeLiveSession):
+        def __init__(self, packet, device, control):
+            super().__init__()
+            opened.append(device)
+    monkeypatch.setattr('selective_hearing.file_ui.FilePlayer', Player)
+    app = FileApp(root)
+    try:
+        app.file_packet = object()
+        app.play_file()
+        player = app.player
+        deliver_devices(app, [device(50, 'Headphones', 'output'), device(51, 'USB', 'output', True)])
+        assert app.player is player
+        listed[:] = [device(22, 'Headphones', 'output'), device(23, 'USB', 'output', True)]
+        app.output_box.current(1)
+        app.remember_device('output')
+        assert opened == [2, 23] and player.cancel.is_set()
+        assert app.player is not player and app.session is None
     finally:
         app.close()

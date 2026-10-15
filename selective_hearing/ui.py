@@ -8,6 +8,7 @@ from .core import OutputControl, SpeakerRegistry
 from .profiles import ProfileStore, default_profile_path, validate_window_seconds
 from .audio import devices, LiveSession, LIVE_WINDOW_SECONDS
 from .models import ModelBackend
+from .device_probe import fresh_devices, catalog_signature
 
 
 class App:
@@ -47,6 +48,10 @@ class App:
             self.auto_start_pending = False
         self.source_devices = []
         self.manual_devices = {}
+        self.device_after = None
+        self.device_scan_busy = False
+        self.device_epoch = 0
+        self.pending_device_start = None
         self.alive = True
         self.generation = 0
         self._build()
@@ -55,6 +60,7 @@ class App:
         else:
             self.restore_people()
         self.refresh_devices()
+        self.device_after = self.root.after(4000, self.watch_devices)
         self.poll_after = self.root.after(100, self.poll)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         if auto_start or file_mode:
@@ -158,7 +164,7 @@ class App:
         self.track_canvas.bind('<Configure>', lambda e: self.track_canvas.itemconfigure(grid_window, width=e.width))
         self.people_note = ttk.Label(people, text="可陆续识别多个人；当前模型同时最多分离两路人声，背景音暂不能独立分离。", foreground="#67758a", wraplength=910)
         self.people_note.pack(anchor="w", pady=8)
-        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；可靠语音持续学习。删除资料时会自动停止音频。',
+        self.profile_note = ttk.Label(people, text='声纹和名字自动保存在本机；初始声纹另存，追加学习仅计可靠的后续片段。删除资料时会自动停止音频。',
                                       foreground='#536378', wraplength=900)
         self.profile_note.pack(anchor='w', pady=(0, 4))
         ttk.Label(people, text='绿框表示识别到该人正在说话；不受静音开关影响，随处理后的音频显示，有延迟。',
@@ -181,39 +187,93 @@ class App:
         self.stats_label = ttk.Label(main, text="", foreground="#67758a", wraplength=930)
         self.stats_label.pack(anchor="w")
 
+    def device_choices(self):
+        choices = {}
+        for direction, box, items in [('input', self.input_box, getattr(self, 'inputs', [])),
+                                      ('output', self.output_box, getattr(self, 'outputs', []))]:
+            index = box.current()
+            if 0 <= index < len(items):
+                choices[direction] = (items[index]['api'], items[index]['name'])
+        return choices
+
+    def apply_device_list(self, listed, preserve=False):
+        choices = self.device_choices() if preserve else self.manual_devices.copy()
+        self.source_devices = listed
+        self.inputs = [d for d in listed if d['input']]
+        self.outputs = [d for d in listed if d['output']]
+        for direction, box, items in [('input', self.input_box, self.inputs),
+                                      ('output', self.output_box, self.outputs)]:
+            box['values'] = [d['name'] + ('（系统默认）' if d[f'default_{direction}'] else '')
+                             for d in items]
+            key = choices.get(direction)
+            matches = [i for i, d in enumerate(items) if (d['api'], d['name']) == key]
+            selected = matches[0] if len(matches) == 1 else None
+            if not preserve and selected is None:
+                selected = next((i for i, d in enumerate(items) if d[f'default_{direction}']), None)
+                self.manual_devices.pop(direction, None)
+            box.set('')
+            if selected is not None:
+                box.current(selected)
+        missing = [label for box, label in [(self.input_box, '输入'), (self.output_box, '输出')]
+                   if box.current() < 0 and (not self.file_mode or label == '输出')]
+        self.device_note.config(text=('、'.join(missing) + '设备未选中：请选择可用设备。' if missing
+            else '每 4 秒自动检测设备；收音或播放时选择其他设备会切换，期间会短暂停顿。'))
+        return not missing
+
     def refresh_devices(self):
         if self.session is not None or self.player is not None:
-            self.status.config(text="请先停止收音和播放，再刷新设备。")
+            self.scan_devices()
             return
         try:
-            self.source_devices = devices(refresh=True)
-            self.inputs = [d for d in self.source_devices if d["input"]]
-            self.outputs = [d for d in self.source_devices if d["output"]]
-            for direction, box, items in [('input', self.input_box, self.inputs),
-                                          ('output', self.output_box, self.outputs)]:
-                names = [d['name'] + ('（系统默认）' if d[f'default_{direction}'] else '')
-                         for d in items]
-                box["values"] = names
-                key = self.manual_devices.get(direction)
-                matches = [i for i, d in enumerate(items) if (d['api'], d['name']) == key]
-                selected = matches[0] if len(matches) == 1 else next(
-                    (i for i, d in enumerate(items) if d[f'default_{direction}']), None)
-                if len(matches) != 1:
-                    self.manual_devices.pop(direction, None)
-                box.set('')
-                if selected is not None:
-                    box.current(selected)
-            missing = [label for box, label in [(self.input_box, '输入'), (self.output_box, '输出')]
-                       if box.current() < 0 and (not self.file_mode or label == '输出')]
-            note = ('、'.join(missing) + '设备未选中：请连接设备后刷新，或手动选择。'
-                    if missing else ('已选好播放设备。' if self.file_mode else '已选好输入和输出。连接或切换耳机后，请刷新设备。'))
-            self.device_note.config(text=note)
+            self.device_epoch += 1
+            self.apply_device_list(devices(refresh=True))
         except Exception as exc:
-            self.inputs, self.outputs = [], []
-            for box in (self.input_box, self.output_box):
-                box["values"] = []
-                box.set("")
-            self.device_note.config(text=f"设备枚举失败：{exc}")
+            self.apply_device_list([])
+            self.device_note.config(text=f'设备枚举失败：{exc}')
+
+    def watch_devices(self):
+        self.device_after = None
+        if self.alive:
+            self.scan_devices()
+            self.device_after = self.root.after(4000, self.watch_devices)
+
+    def scan_devices(self):
+        if self.device_scan_busy or not self.alive:
+            return
+        self.device_scan_busy = True
+        epoch = self.device_epoch
+        def work():
+            try:
+                self.events.put({'type': 'devices', 'items': fresh_devices(), 'epoch': epoch})
+            except Exception as exc:
+                self.events.put({'type': 'device_error', 'message': str(exc), 'epoch': epoch})
+        Thread(target=work, daemon=True).start()
+
+    def accept_device_scan(self, event):
+        self.device_scan_busy = False
+        if event['epoch'] != self.device_epoch:
+            return  # Ignore a snapshot started before local PortAudio was refreshed.
+        if event['type'] == 'device_error':
+            self.device_note.config(text='自动检测暂时失败，可点刷新设备重试。')
+            return  # A failed probe is not evidence of unplugging.
+        listed = event['items']
+        if catalog_signature(listed) == catalog_signature(self.source_devices):
+            return
+        running = self.session is not None or self.player is not None
+        valid = self.apply_device_list(listed, preserve=running or self.pending_device_start is not None)
+        if running and not valid:
+            self.stop()
+            self.status.config(text='正在使用的设备已断开或无法唯一匹配，音频已停止。请选择设备后重新开始。')
+
+    def prepare_audio_devices(self):
+        # All streams must be closed first. Never pass IDs from the helper
+        # process into this process; resolve selected names against a fresh list.
+        if self.session is not None or self.player is not None:
+            raise ValueError('上一轮音频正在结束，请稍后开始')
+        self.device_epoch += 1
+        listed = devices(refresh=True)
+        if not self.apply_device_list(listed, preserve=True):
+            raise ValueError('所选设备已不可用，请重新选择设备')
 
     def remember_device(self, direction):
         box, items = ((self.input_box, self.inputs) if direction == 'input'
@@ -222,6 +282,25 @@ class App:
         if 0 <= index < len(items):
             device = items[index]
             self.manual_devices[direction] = (device['api'], device['name'])
+            resume = self.pending_device_start
+            if self.session is not None and not self.session.cancel.is_set():
+                resume = 'live'
+            elif self.player is not None:
+                resume = 'file'
+            if resume:
+                self.stop()
+                self.pending_device_start = resume
+                self.status.config(text='正在切换音频设备…')
+                self.finish_device_switch()
+
+    def finish_device_switch(self):
+        if self.pending_device_start is None or self.session is not None or self.pending_delete is not None:
+            return
+        resume, self.pending_device_start = self.pending_device_start, None
+        if resume == 'live':
+            self.start_live(automatic=True)
+        else:
+            self.play_file()
 
     def selected_device(self, box, items):
         index = box.current()
@@ -379,7 +458,7 @@ class App:
             if not speaker["ready"]:
                 text += " · 确认中"
             if speaker.get('saved'):
-                text += f" · 已保存 · 已学习 {speaker.get('learned_observations', 0)} 段"
+                text += f" · 初始声纹已保存 · 追加学习 {speaker.get('learned_observations', 0)} 段"
             self.speaker_labels[identity].config(text=text)
         if speakers:
             self.people_note.config(text="名字可直接编辑，回车保存。新人需跨片段确认，避免重复建人；同时最多分离两路人声。")
@@ -443,11 +522,10 @@ class App:
                 self.auto_start_pending = True
                 self.load_models()
                 return
+            self.stop()
+            self.prepare_audio_devices()
             input_id = self.selected_device(self.input_box, self.inputs)
             output_id = self.selected_device(self.output_box, self.outputs)
-            self.stop()
-            if self.session is not None:
-                raise ValueError("上一轮推理正在结束，请稍后开始")
             self.file_packet = self.file_report = None
             self.reset_people(reset_selection=not automatic)
             generation = self.generation
@@ -470,6 +548,7 @@ class App:
                 messagebox.showerror("无法开始", str(exc))
 
     def stop(self):
+        self.pending_device_start = None
         self.update_speaking()
         self.auto_start_pending = False
         if self.startup_after is not None:
@@ -495,6 +574,9 @@ class App:
             while True:
                 event = self.events.get_nowait()
                 kind = event["type"]
+                if kind in ('devices', 'device_error'):
+                    self.accept_device_scan(event)
+                    continue
                 if kind in ("file_done", "file_error"):
                     self.file_busy = False
                     self.file_button.config(state="normal")
@@ -541,6 +623,7 @@ class App:
                 stats = self.session.stats()
                 self.stats_label.config(text=f"输入电平 {stats['level']:.3f} · 输入丢块 {stats['input_drops']} · 输出丢块 {stats['output_drops']} · 缓冲 {stats['queue_seconds']:.1f}s\n软件块年龄 {stats['software_age']:.1f}s（非端到端延迟）· 空缓冲回调 {stats['empty_callbacks']}")
         self.finish_delete()
+        self.finish_device_switch()
         source = self.session or self.player
         self.update_speaking(source.active_speakers() if source is not None else ())
         if self.alive:
@@ -555,6 +638,8 @@ class App:
         if not self.save_names():
             return
         self.alive = False
+        if self.device_after is not None:
+            self.root.after_cancel(self.device_after)
         if self.poll_after is not None:
             self.root.after_cancel(self.poll_after)
         self.root.destroy()

@@ -204,3 +204,14 @@ def test_file_activity_follows_current_position_even_with_zero_gain(monkeypatch)
     now[0] += .5
     player._callback(data, 320, None, None)
     assert not player.active_speakers()
+
+
+def test_unplug_stop_releases_both_streams_even_if_stop_fails():
+    closed = []
+    class RemovedStream:
+        def stop(self): raise audio.sd.PortAudioError('Device unplugged')
+        def close(self): closed.append(self)
+    session = LiveSession(0, 1, OutputControl(), lambda _: None)
+    session.input_stream, session.output_stream = RemovedStream(), RemovedStream()
+    session.stop()
+    assert len(closed) == 2 and session.input_stream is session.output_stream is None

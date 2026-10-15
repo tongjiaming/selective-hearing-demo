@@ -82,8 +82,9 @@ class FileApp(App):
         if self.file_packet is None or self.pending_delete is not None:
             return
         try:
-            device = self.selected_device(self.output_box, self.outputs)
             self.stop()
+            self.prepare_audio_devices()
+            device = self.selected_device(self.output_box, self.outputs)
             self.player = FilePlayer(self.file_packet, device, self.control)
             self.player.start()
             self.status.config(text='正在循环试听录音 · 切换人物保持同一播放位置')
