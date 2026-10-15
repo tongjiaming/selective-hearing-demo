@@ -8,7 +8,7 @@ from scipy.signal import resample_poly
 from math import gcd
 import time
 
-from .feature_bank import FeatureBank
+from .feature_bank import FeatureBank, MIN_SPEECH_SECONDS
 
 
 def mono(audio):
@@ -170,7 +170,7 @@ class SpeakerRegistry:
 
     def _discover(self, vector, seconds):
         # Brief usable speech must accumulate rather than be discarded forever.
-        if seconds < min(0.75, self.min_new_seconds):
+        if seconds < min(MIN_SPEECH_SECONDS, self.min_new_seconds):
             return self._discovery_result('short_speech')
         if not self.speakers and seconds >= self.min_new_seconds:
             identity = self._register(vector, seconds)
@@ -261,7 +261,7 @@ class SpeakerRegistry:
                 continue
             result.append(self._discover(vectors[i], durations[i]))
         entries = [(v, seconds, identity) for v, seconds, identity in zip(vectors, durations, result)
-                   if seconds >= .75]
+                   if seconds >= MIN_SPEECH_SECONDS]
         if self.store is not None and entries:
             self.store.add_samples(entries)
             self.feature_bank = FeatureBank(self.store.load_samples())

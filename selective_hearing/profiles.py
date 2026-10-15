@@ -7,7 +7,7 @@ import sqlite3
 import numpy as np
 
 from .core import Speaker, unit
-from .feature_bank import VoiceSample, MAX_SAMPLES, MAX_PER_SPEAKER, MAX_PENDING
+from .feature_bank import VoiceSample, MAX_SAMPLES, MAX_PER_SPEAKER, MAX_PENDING, MIN_SPEECH_SECONDS
 from .model_assets import ASSETS
 
 MODEL_KEY = 'ecapa-fbank80-sentence-mean-v1:' + ASSETS['ecapa.ckpt']['sha256']
@@ -123,7 +123,7 @@ class ProfileStore:
                               (MAX_SAMPLES,)).fetchall()
         result = []
         for number, blob, seconds, speaker, batch_id in reversed(rows):
-            if number < 1 or not math.isfinite(seconds) or seconds < .75:
+            if number < 1 or not math.isfinite(seconds) or seconds < MIN_SPEECH_SECONDS:
                 raise ValueError('人声样本资料异常，未覆盖原资料。')
             result.append(VoiceSample(number, self.vector(np.frombuffer(blob, dtype='<f4')),
                                      seconds, f'speaker_{speaker}' if speaker is not None else None, batch_id))
@@ -132,7 +132,7 @@ class ProfileStore:
     def add_samples(self, entries):
         rows = [(self.vector(v).astype('<f4').tobytes(), seconds,
                  self.number(identity) if identity is not None else None) for v, seconds, identity in entries]
-        if any(not math.isfinite(r[1]) or r[1] < .75 for r in rows):
+        if any(not math.isfinite(r[1]) or r[1] < MIN_SPEECH_SECONDS for r in rows):
             raise ValueError('无效人声样本')
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')

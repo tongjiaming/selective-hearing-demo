@@ -10,6 +10,7 @@ import numpy as np
 MAX_SAMPLES = 512
 MAX_PER_SPEAKER = 64
 MAX_PENDING = 128
+MIN_SPEECH_SECONDS = 0.5
 
 
 @dataclass

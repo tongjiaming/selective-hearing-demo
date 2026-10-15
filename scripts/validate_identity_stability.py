@@ -30,14 +30,22 @@ def baseline_registry(ref):
     return module.SpeakerRegistry
 
 
-def evaluate(backend, old_class, waveform, references, window_seconds):
+def evaluate(backend, old_class, waveform, references, window_seconds, baseline_min_speech_seconds=0):
     old = old_class()
     processor = Processor(backend)
     current_assign = processor.registry.assign
     before_trace, after_trace = [], []
+    before_eligible = 0
 
     def compare(vectors, durations):
-        before_trace.append(old.assign(vectors, durations))
+        nonlocal before_eligible
+        indices = [i for i, seconds in enumerate(durations) if seconds >= baseline_min_speech_seconds]
+        before_eligible += len(indices)
+        before = [None] * len(vectors)
+        identities = old.assign([vectors[i] for i in indices], [durations[i] for i in indices])
+        for index, identity in zip(indices, identities):
+            before[index] = identity
+        before_trace.append(before)
         assigned = current_assign(vectors, durations)
         after_trace.append(assigned)
         return assigned
@@ -54,6 +62,7 @@ def evaluate(backend, old_class, waveform, references, window_seconds):
               'duration_seconds': len(waveform) / 16000,
               'input_sha256': hashlib.sha256(waveform.tobytes()).hexdigest(),
               'eligible_tracks': sum(map(len, after_trace)),
+              'before_eligible_tracks': before_eligible,
               'before_matched_tracks': sum(x is not None for row in before_trace for x in row),
               'after_matched_tracks': sum(x is not None for row in after_trace for x in row),
               'before_assignments': before_trace, 'after_assignments': after_trace}
@@ -67,6 +76,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline-ref', default='21200ae')
     parser.add_argument('--live-window-seconds', type=float, default=1.5)
+    parser.add_argument('--baseline-min-speech-seconds', type=float, default=0,
+                        help='Reproduce an older processor speech-duration gate before its registry sees features.')
     parser.add_argument('--output', default='docs/evidence/identity-stability.json')
     args = parser.parse_args()
     references, manifest = [], []
@@ -92,9 +103,10 @@ def main():
     backend = ModelBackend()
     cases = {}
     for name, waveform, refs, window in fixtures:
-        cases[name] = evaluate(backend, old_class, waveform, refs, window)
+        cases[name] = evaluate(backend, old_class, waveform, refs, window, args.baseline_min_speech_seconds)
         print(name, json.dumps({k: v for k, v in cases[name].items() if not k.endswith('assignments')}, ensure_ascii=False), flush=True)
     report = {'baseline_ref': args.baseline_ref, 'source': 'SpeechBrain public ASR samples',
+              'baseline_min_speech_seconds': args.baseline_min_speech_seconds,
               'method': f'Same separated embeddings sent to old and new registries. Live windows are non-overlapping {args.live_window_seconds:g} s; file windows are 4 s.',
               'limitations': 'Small synthetic English fixtures; not a user microphone recording. Unknown segments remain silent; no guarantee of real-room accuracy.',
               'manifest': manifest, 'cases': cases}

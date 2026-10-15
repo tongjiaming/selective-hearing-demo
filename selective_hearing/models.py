@@ -10,6 +10,7 @@ import time
 import numpy as np
 
 from .core import AudioPacket, SpeakerRegistry, resample
+from .feature_bank import MIN_SPEECH_SECONDS
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / "models"
@@ -108,7 +109,7 @@ class Processor:
                     continue
                 speech = self.backend.speech(track)
                 voiced_seconds.append(len(speech) / 16000)
-                if len(speech) < 12000:
+                if len(speech) < int(MIN_SPEECH_SECONDS * 16000):
                     continue
                 vectors.append(self.backend.embedding(speech))
                 durations.append(len(speech) / 16000)
@@ -137,7 +138,7 @@ class Processor:
             elif len(audio16) < 16000:
                 messages.append('本段不足 1 秒，未参与识别')
             else:
-                messages.append(f'本段有效人声最长 {max(voiced_seconds, default=0):.1f} 秒，未达到 0.75 秒')
+                messages.append(f'本段有效人声最长 {max(voiced_seconds, default=0):.2f} 秒，未达到 {MIN_SPEECH_SECONDS:g} 秒')
         if self.registry.last_corrections:
             messages.append(f'更新 {len(self.registry.last_corrections)} 段历史特征归属')
         elapsed = time.perf_counter() - begin
